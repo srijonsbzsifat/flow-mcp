@@ -525,3 +525,10 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   attached the VIDEO as the reference. `attachAsset` now prefers an option named exactly the asset (or "<asset> Image").
 - The Studio monitor kept saying "running, 5/5" while Flow showed nothing: it reports the job's own step, which was the one-by-one
   fallback typing into the wrong composer. A failed first agent round means check Flow's window, not the monitor.
+- Failed tiles (2026-10-19): Flow's failed image tile says only "Sorry, this image failed to generate. You have not been charged
+  for this generation." (`flow-error-tile .error-subtitle`; buttons Retry / Reuse prompt / Delete; the tile's aria-label is the full
+  prompt the agent used). No reason is given, and a plain Retry of the same wording can fail again (plate 01 failed twice).
+  Rule from the user: quote Flow's exact text, retry once, and if that fails REWORD the prompt (shorter, plainer, nothing a filter
+  might trip) rather than retrying forever. `scanGrid` now flags failed tiles (`failed`) so they are never downloaded (a batch hung
+  ~10 minutes on "Failed to download media" trying to download one), the agent's second round tells it to reword, and the job note
+  quotes Flow's message.

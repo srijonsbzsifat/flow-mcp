@@ -917,6 +917,16 @@ export interface FlowAsset {
   name: string;
   kind: "image" | "video" | "scene";
   id?: string;
+  // A tile Flow marked "Failed" (no image behind it, nothing to download).
+  failed?: boolean;
+}
+
+// What Flow itself says on a failed tile, word for word ("Sorry, this image failed to generate. You have not been charged
+// for this generation."), so a failure report quotes Flow instead of guessing. Empty when no tile has failed.
+async function readFailureText(page: Page): Promise<string> {
+  return page
+    .evaluate(() => (document.querySelector("flow-error-tile .error-subtitle") as HTMLElement | null)?.innerText.replace(/\s+/g, " ").trim() ?? "")
+    .catch(() => "");
 }
 
 // Walks the virtualised grid from the top and collects every tile it passes. Recycled tiles sometimes have no
@@ -936,6 +946,7 @@ async function scanGrid(page: Page, stopAt?: (assets: FlowAsset[]) => boolean): 
           // like a still in the Library and download as a ZIP of loose clips.
           kind: t.querySelector("flow-scene-tile") ? ("scene" as const) : t.querySelector("flow-video-tile") ? ("video" as const) : ("image" as const),
           id: (eval(js) as (t: Element) => string | undefined)(t),
+          failed: t.querySelector("flow-error-tile") !== null,
         })),
       TILE_ID_JS,
     );
@@ -943,7 +954,10 @@ async function scanGrid(page: Page, stopAt?: (assets: FlowAsset[]) => boolean): 
       if (!a.name) continue;
       const known = seen.get(a.name);
       if (!known) seen.set(a.name, a);
-      else if (!known.id && a.id) known.id = a.id;
+      else {
+        if (!known.id && a.id) known.id = a.id;
+        known.failed = a.failed;
+      }
     }
     if (stopAt?.([...seen.values()])) break;
     const moved = await page.evaluate(() => {
@@ -1755,6 +1769,8 @@ interface RoundOutcome {
   produced: number;
   timedOut: boolean;
   failedTiles: number;
+  // Flow's own words on a failed tile, quoted when the agent is asked again.
+  failure: string;
 }
 
 // One pass through Flow's agent for the given scene numbers: ask, wait, match the new tiles back to those scenes
@@ -1776,6 +1792,7 @@ async function agentRound(
   retry: boolean,
   files: string[],
   done: Set<number>,
+  lastFailure = "",
 ): Promise<RoundOutcome> {
   const s = job.params;
   const aspect = s.aspect_ratio ?? "16:9";
@@ -1821,7 +1838,7 @@ async function agentRound(
   }
   const script = indexes.map((i) => `Scene ${numberOf(i)}: ${scenes[i].replace(/\s*\n+\s*/g, " ").trim()}`).join(" ");
   const lead = retry
-    ? `${indexes.length} image(s) from the last batch failed to generate. Generate them again now, one image per scene`
+    ? `${indexes.length} image(s) from the last batch failed to generate${lastFailure ? ` (Flow said: "${lastFailure}")` : ""}. Flow gives no reason, and a plain retry of the same wording already failed, so REWORD each of these scenes before generating: shorter, plainer, the same location and subject, nothing that could trip a content filter. Generate them again now, one image per scene`
     : `Generate exactly ${indexes.length} separate images, one image per scene, in scene order`;
   const cast_note = cast.length
     ? ` Use the attached character reference${cast.length > 1 ? "s" : ""} (${cast.join(", ")}) as the exact look of ${cast.length > 1 ? "those characters" : "that character"} in every scene they appear in: same face, build, colours and outfit, never redesigned.`
@@ -1865,7 +1882,9 @@ async function agentRound(
   const failedTiles = await retryNewErrorTiles(page, before, true)
     .then((r) => r.errors)
     .catch(() => 0);
-  const fresh = (await scanGrid(page)).filter((t) => t.id && !before.has(t.id) && !beforeNames.has(t.name) && t.kind === "image");
+  const failure = failedTiles ? await readFailureText(page) : "";
+  // A failed tile has no image behind it: leaving it in made the batch try to download it and hang for minutes.
+  const fresh = (await scanGrid(page)).filter((t) => t.id && !before.has(t.id) && !beforeNames.has(t.name) && t.kind === "image" && !t.failed);
 
   // Tiles finish in any order and the agent rewords prompts, so each image is matched back to its scene by the
   // prompt Flow stored for it ("Reuse prompt" puts that text in the composer).
@@ -1903,7 +1922,7 @@ async function agentRound(
     done.add(sceneIndex);
     produced++;
   }
-  return { produced, timedOut, failedTiles };
+  return { produced, timedOut, failedTiles, failure };
 }
 
 // Hands a whole multi-scene script to Flow's own agent, which generates every image in parallel (seconds instead
@@ -2040,6 +2059,7 @@ export async function runAgentBatch(job: Job): Promise<string[]> {
   let failedTiles = 0;
   let agentRetries = 0;
   let agentProblem = "";
+  let lastFailure = "";
   try {
     step(job, "switching Agent mode on");
     await setAgentMode(page, true);
@@ -2052,9 +2072,10 @@ export async function runAgentBatch(job: Job): Promise<string[]> {
         agentRetries += todo.length;
         job.progress = `asking the agent again for ${todo.length} scene(s)`;
       }
-      const out = await agentRound(page, job, scenes, todo, round > 0, files, done);
+      const out = await agentRound(page, job, scenes, todo, round > 0, files, done, lastFailure);
       agentTimedOut ||= out.timedOut;
       failedTiles = out.failedTiles;
+      lastFailure = out.failure || lastFailure;
       if (!out.produced) break; // the agent delivered nothing this round: stop asking it
     }
   } catch (err) {
@@ -2116,7 +2137,7 @@ export async function runAgentBatch(job: Job): Promise<string[]> {
   files.sort();
   job.note = [
     // What still needs doing first: the panel shows only the start of a long note.
-    failed.length ? `still failed: scene ${failed.join(", ")} (use Retry)` : "",
+    failed.length ? `still failed: scene ${failed.join(", ")}${lastFailure ? ` - Flow said: "${lastFailure}"` : ""} (a plain Retry repeats the same wording; if it fails again, reword that scene first)` : "",
     agentProblem ? `agent mode failed (${agentProblem}), so the images were made one by one` : "",
     agentTimedOut ? "the agent stalled and was stopped" : "",
     `${done.size} of ${scenes.length} scenes came from the agent`,
