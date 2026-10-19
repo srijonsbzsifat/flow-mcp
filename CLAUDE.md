@@ -553,3 +553,4 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   `snapshotIds` now unions the visible ids with a full `scanGrid` (videos by `title:<label>`) at all three job starts. After a
   clip job, check the downloaded file really is the new clip (look at its frames), and if not, find the unrenamed tile in
   `flow_assets` (Flow's own short title), rename it and `flow_download` it; the credits were not lost.
+- Clip 4 teleport (2026-10-20): first frame Eli outside facing the camera, last frame Eli inside with his back to the camera. A 180-degree turn plus passing the door leaf made the model hide him behind the door and re-show him inside. Rule: no big facing change or occluder crossing between first and last frame; end frame = just past the occluder, same facing; split into two clips if the beat needs both.
