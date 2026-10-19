@@ -32,6 +32,7 @@ export class RemoteCore implements Core {
   character = (a: unknown) => call("character", a);
   characters = (a: unknown) => call("characters", a ?? {});
   character_edit = (a: unknown) => call("character_edit", a);
+  custom_voice = (a: unknown) => call("custom_voice", a);
   edit = (a: unknown) => call("edit", a);
   trash = (a: unknown) => call("trash", a);
   discard = (a: unknown) => call("discard", a);

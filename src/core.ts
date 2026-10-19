@@ -5,7 +5,7 @@ import { z } from "zod";
 import { assemble, localVoices, speakLocally } from "./assemble.js";
 import { GEMINI_VOICES, geminiKey, saveGeminiKey, speakWithGemini } from "./gemini.js";
 import { extractLastFrame } from "./chain.js";
-import { listProjects, openProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
+import { finishCustomVoice, previewCustomVoice, listProjects, openProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
 import { JobQueue, type Job } from "./queue.js";
 import { BIN, COMPUTER, IS_MAC, IS_WIN, moveToBin } from "./platform.js";
 import { TECHNIQUES, techniqueById } from "./techniques.js";
@@ -179,6 +179,22 @@ export const shapes = {
       .default(true)
       .describe("Also read each character's voice from Flow (about 8 s per character, since each editor has to be opened). Set false for a quick list of names."),
   },
+  custom_voice: {
+    name: z.string().min(1).describe("Character, as listed by flow_characters."),
+    performance: z
+      .string()
+      .min(1)
+      .max(600)
+      .optional()
+      .describe("STEP 1: how the voice should perform, e.g. 'A frightened child around 8, higher and softer than a grown-up, quick breathless speech'. Generates a preview and leaves the voice dialog open."),
+    base_voice: z.string().optional().describe("Stock voice to customise (required with `performance`), e.g. 'Fenrir'."),
+    sample_dialogue: z.string().max(120).optional().describe("A line the voice speaks in the preview (max 120 characters); use a real line from a scene."),
+    voice_name: z.string().max(60).optional().describe("Name for the new voice. Flow's default is '<Base> custom'."),
+    finish: z
+      .enum(["add", "discard"])
+      .optional()
+      .describe("STEP 2, only after the USER has listened to the preview in Flow and said so in chat: 'add' keeps the voice on the character, 'discard' throws it away. Call nothing else in between."),
+  },
   character_edit: {
     name: z.string().min(1).describe("Character to change, as listed by flow_characters."),
     voice: z
@@ -266,6 +282,7 @@ export interface Core {
   character(a: Args<"character">): Promise<unknown>;
   characters(a: Args<"characters">): Promise<unknown>;
   character_edit(a: Args<"character_edit">): Promise<unknown>;
+  custom_voice(a: Args<"custom_voice">): Promise<unknown>;
   edit(a: Args<"edit">): Promise<unknown>;
   trash(a: Args<"trash">): Promise<unknown>;
   discard(a: Args<"discard">): Promise<unknown>;
@@ -577,6 +594,14 @@ export class LocalCore implements Core {
     else if (change) rememberCharacter(name, `${characterLook(name) ?? ""} Changed since, and this wins over anything above: ${change.replace(/[.\s]+$/, "")}`.trim());
     const set = wantVoice ? await setCharacterVoice(name, wantVoice) : undefined;
     return { ...out, ...(set ? { voice: set.voice, previous_voice: set.previous ?? null } : {}), use_as: `asset:${name}` };
+  }
+
+  async custom_voice({ name, performance, base_voice, sample_dialogue, voice_name, finish }: Args<"custom_voice">) {
+    if (this.queue.busy) throw new Error(BUSY);
+    if (finish) return finishCustomVoice(name, finish === "add");
+    if (!performance || !base_voice) throw new Error("Pass `performance` and `base_voice` to preview a custom voice, or `finish` to keep or discard the one being previewed.");
+    await previewCustomVoice(name, base_voice, sample_dialogue, performance, voice_name);
+    return { name, status: "preview_ready", note: "The preview has been generated and played once; the voice dialog is open in the Flow window. Ask the user to listen there (play icon) and tell you in chat whether to keep it. Then call this tool again with finish: 'add' or 'discard'. Do not call other Flow tools first." };
   }
 
   async characters({ with_voices }: Args<"characters">) {

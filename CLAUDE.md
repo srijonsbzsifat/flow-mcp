@@ -497,3 +497,15 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   "Google Account: Name (email)" aria-label) and `flow_use_account` (needs `user_confirmed`, `create` for new, refused while busy).
 - Projects, characters, assets and credits are per ACCOUNT as well as per project; voices.json/characters.json in FLOW_MCP_HOME are
   shared across accounts by character name. After a switch call `flow_projects` before assuming anything exists.
+
+## Custom voices (2026-10-19)
+- Voice dialog = stock voice list + "Sample dialogue" (max 120) + "Customize performance" + "Voice name" (default "<Base> custom") +
+  `button.voice-audio-card` ("Play preview", mat-icon `play_arrow` idle / `pause` playing / something else while generating) +
+  "Add to character". `flow_custom_voice` step 1 (`previewCustomVoice`) fills them, clicks the card to generate, waits for the play
+  icon to come back, clicks it once so the user hears it, and LEAVES THE DIALOG OPEN; step 2 (`finishCustomVoice`) adds or closes.
+  The user listens in the Flow window between the two calls; no other Flow tool in between (they navigate away). Tested live on
+  Sami: preview + play about 43 s, discard restores the old voice.
+- Clicking the option that is ALREADY selected closes the dialog (so `openVoiceDialog` skips it). The voice button's accessible name
+  is sometimes "fenrir" and sometimes "Fenrir Male, excitable, younger pitch": compare with startsWith.
+- Not tested: the "add" path of flow_custom_voice (adding a custom voice makes it appear in the list as "<Base> custom" with a
+  delete button; Deleting it removes the voice from every character using it).

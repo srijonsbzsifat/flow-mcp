@@ -1330,6 +1330,16 @@ async function readVoice(page: Page): Promise<string | undefined> {
 // open the same dialog. The list shows only the first voices, so the search box reaches the rest. "Customize performance"
 // would generate a NEW voice, so it is left alone.
 async function pickVoice(page: Page, voice: string): Promise<void> {
+  const dialog = await openVoiceDialog(page, voice);
+  await dialog.getByRole("button", { name: "Add to character", exact: true }).click();
+  await pause(page, 1200);
+  const now = await readVoice(page);
+  // The voice button is named "fenrir" at one moment and "Fenrir Male, excitable, younger pitch" at another.
+  if (!now?.toLowerCase().startsWith(voice.toLowerCase())) throw new Error(`Flow did not take the voice: ${name_(now)} instead of "${voice}".`);
+}
+
+// Opens the voice dialog and selects `voice` in it, leaving the dialog open for the caller to confirm or customise.
+async function openVoiceDialog(page: Page, voice: string) {
   const current = await readVoice(page);
   const opener = current ? page.getByRole("button", { name: current, exact: true }) : page.getByRole("button", { name: "Select a voice" });
   await opener.first().click();
@@ -1344,13 +1354,82 @@ async function pickVoice(page: Page, voice: string): Promise<void> {
     await dialog.getByRole("button", { name: "Close" }).click().catch(() => {});
     throw new Error(`Voice "${voice}" not found. Available: ${available.join("; ")}`);
   }
-  await option.click();
-  await dialog.getByRole("button", { name: "Add to character", exact: true }).click();
-  await pause(page, 1200);
-  const now = await readVoice(page);
-  if (now?.toLowerCase() !== voice.toLowerCase()) throw new Error(`Flow did not take the voice: ${name_(now)} instead of "${voice}".`);
+  // Clicking the voice that is already selected closes the dialog (mapped live 2026-10-19), so only click a different one.
+  if ((await option.getAttribute("aria-selected").catch(() => null)) !== "true") await option.click();
+  return dialog;
 }
 const name_ = (v?: string) => (v ? `"${v}"` : "no voice");
+
+// Custom voice = a stock voice plus a sample line and a performance note ("a frightened child, breathless..."). Flow makes a
+// NEW voice from them: "Preview" generates it (a while), the card goes back to a play icon when it is ready, and only
+// "Add to character" keeps it. Mapped live 2026-10-19: textboxes "Sample dialogue" (max 120), "Customize performance",
+// "Voice name" (defaults to "<Base> custom"); the preview card is button.voice-audio-card whose mat-icon is "play_arrow"
+// when idle and something else (pause while playing, a spinner while generating) otherwise.
+const previewIcon = (card: Locator) => card.locator("mat-icon").allInnerTexts().then((t) => t.join(",").trim()).catch(() => "");
+
+async function untilPreviewIdle(page: Page, card: Locator, patientMs: number, quietMs: number): Promise<void> {
+  const started = Date.now();
+  let busy = false;
+  let idleSince = 0;
+  while (Date.now() - started < patientMs) {
+    if ((await previewIcon(card)) === "play_arrow") {
+      idleSince ||= Date.now();
+      // Generation may be too quick to catch: with no sign of work, a few quiet seconds count as ready.
+      if (Date.now() - idleSince > (busy ? 1500 : quietMs)) return;
+    } else {
+      busy = true;
+      idleSince = 0;
+    }
+    await page.waitForTimeout(400);
+  }
+  throw new Error(`The voice preview did not finish within ${Math.round(patientMs / 1000)} s.`);
+}
+
+// Step 1: opens the character, fills the customisation, generates the preview and plays it once. The dialog stays OPEN so
+// the user can listen (and play again) in the Flow window; nothing is kept until finishCustomVoice("add").
+export async function previewCustomVoice(name: string, base: string, sample: string | undefined, performance: string, voiceName?: string): Promise<{ name: string; base_voice: string }> {
+  const state = await getFlowState();
+  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
+  if (sample && sample.length > 120) throw new Error(`Sample dialogue is ${sample.length} characters; Flow allows 120.`);
+  const page = await getFlowPage();
+  await openCharacter(page, name);
+  try {
+    const dialog = await openVoiceDialog(page, base);
+    if (sample) await dialog.getByRole("textbox", { name: "Sample dialogue" }).fill(sample);
+    await dialog.getByRole("textbox", { name: "Customize performance" }).fill(performance);
+    if (voiceName) await dialog.getByRole("textbox", { name: "Voice name" }).fill(voiceName);
+    const card = dialog.locator("button.voice-audio-card");
+    await card.click(); // generates the custom preview
+    await untilPreviewIdle(page, card, 180_000, 6000);
+    await card.click(); // plays it so the user hears it
+    await untilPreviewIdle(page, card, 90_000, 1500);
+  } catch (err) {
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click().catch(() => {});
+    await leaveCharacterEditor(page);
+    throw err;
+  }
+  return { name, base_voice: base };
+}
+
+// Step 2, after the user has listened: keep the previewed voice on the character, or throw it away.
+export async function finishCustomVoice(name: string, keep: boolean): Promise<{ name: string; voice?: string }> {
+  const page = await getFlowPage();
+  const dialog = page.getByRole("dialog").first();
+  if (!(await dialog.isVisible().catch(() => false))) throw new Error("No voice preview is open. Start again with a performance to preview.");
+  try {
+    if (!keep) {
+      await dialog.getByRole("button", { name: "Close" }).click();
+      return { name };
+    }
+    await dialog.getByRole("button", { name: "Add to character", exact: true }).click();
+    await pause(page, 2500);
+    const voice = await readVoice(page);
+    rememberVoice(name, voice);
+    return { name, voice };
+  } finally {
+    await leaveCharacterEditor(page);
+  }
+}
 
 // Gives an existing character a stock voice. Returns the old one too.
 export async function setCharacterVoice(name: string, voice: string): Promise<{ name: string; voice: string; previous?: string }> {
@@ -1360,7 +1439,7 @@ export async function setCharacterVoice(name: string, voice: string): Promise<{ 
   await openCharacter(page, name);
   const previous = await readVoice(page);
   try {
-    if (previous?.toLowerCase() !== voice.toLowerCase()) await pickVoice(page, voice);
+    if (!previous?.toLowerCase().startsWith(voice.toLowerCase())) await pickVoice(page, voice);
   } finally {
     await leaveCharacterEditor(page);
   }

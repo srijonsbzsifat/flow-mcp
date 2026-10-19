@@ -238,6 +238,18 @@ server.registerTool(
 );
 
 server.registerTool(
+  "flow_custom_voice",
+  {
+    title: "Customise a character's voice",
+    description:
+      "Two steps, with the USER listening in between. STEP 1: `performance` + `base_voice` (+ `sample_dialogue`, a real scene line) makes Flow generate a custom voice preview (takes a while), plays it once and leaves the voice dialog open in the Flow window. The user listens there and says in chat whether to keep it. STEP 2: call again with `finish: 'add'` (keep on the character) or 'discard'. Do not call other Flow tools between the steps.",
+    inputSchema: shapes.custom_voice,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_custom_voice", core.custom_voice(args))),
+);
+
+server.registerTool(
   "flow_characters",
   {
     title: "List characters",
