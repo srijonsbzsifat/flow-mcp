@@ -1188,7 +1188,9 @@ export async function listProjects(): Promise<{ projects: FlowProject[]; current
         if (!id || seen.has(id)) continue;
         seen.add(id);
         let card: Element = a;
-        while (card.parentElement && card.parentElement.querySelectorAll("a[href*='/project/']").length === 1) card = card.parentElement;
+        // With a single project there is no sibling card to stop the climb, so it must also stop before the page chrome
+        // (an account with one project was listed as "Skip to main content", the first line of the whole page).
+        while (card.parentElement && card.parentElement.querySelectorAll("a[href*='/project/']").length === 1 && !card.parentElement.querySelector("header, nav, main, [role=main]") && card.parentElement !== document.body) card = card.parentElement;
         const lines = ((card as HTMLElement).innerText ?? "").split("\n").map((l) => l.trim());
         out.push({ id, name: lines.find((l) => !skip.has(l)) ?? id });
       }
