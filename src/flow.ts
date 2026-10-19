@@ -1101,11 +1101,53 @@ export async function listAssets(): Promise<FlowAsset[]> {
   return assets;
 }
 
-// Downloads media that already exists in the project, matched by (the start of) its title.
+// Reads the tiles currently in the grid (the search results, while a search is active), failed ones flagged.
+const readTiles = (page: Page): Promise<FlowAsset[]> =>
+  page.evaluate(
+    (js) =>
+      [...document.querySelectorAll("flow-grid-tile-container")].map((t) => ({
+        name: t.getAttribute("aria-label") ?? "",
+        kind: t.querySelector("flow-scene-tile") ? ("scene" as const) : t.querySelector("flow-video-tile") ? ("video" as const) : ("image" as const),
+        id: (eval(js) as (t: Element) => string | undefined)(t),
+        failed: t.querySelector("flow-error-tile") !== null,
+      })).filter((a) => a.name),
+    TILE_ID_JS,
+  );
+
+// Tiles whose title starts with `name` (case-insensitive) once the search results have settled. The search also matches
+// prompts, so other tiles can be in the list; only title matches count. An exact title wins over a longer one that merely
+// starts with it ("scene 1_X" is the still, "scene 1_X_Video" its clip), then still images win over clips.
+async function searchedMatches(page: Page, name: string): Promise<FlowAsset[]> {
+  const want = name.toLowerCase();
+  let hits: FlowAsset[] = [];
+  for (let i = 0; i < 8; i++) {
+    hits = (await readTiles(page)).filter((a) => !a.failed && a.name.toLowerCase().startsWith(want));
+    if (hits.length) break;
+    await pause(page, 1000);
+  }
+  return hits.sort((a, b) => Number(b.name.toLowerCase() === want) - Number(a.name.toLowerCase() === want) || Number(b.kind === "image") - Number(a.kind === "image"));
+}
+
+// Downloads media that already exists in the project, matched by (the start of) its title. Found through the top-bar
+// search (the same route as trashing), so a project with hundreds of tiles needs no scrolling; the old scroll-and-scan
+// is the fallback when the search finds nothing.
 export async function downloadAsset(name: string, targetStem: string, quality: DownloadQuality): Promise<string[]> {
   const state = await getFlowState();
   if (!state.signedIn || !state.inProject) throw new Error(state.hint);
   const page = await getFlowPage();
+  await ensureProjectGrid(page);
+  const want = name.replace(/…$/, "");
+  let pick: FlowAsset | undefined;
+  try {
+    await searchProject(page, want);
+    pick = (await searchedMatches(page, want))[0];
+    if (pick && pick.kind !== "scene" && pick.id) return await downloadTile(page, tileOf(page, pick), targetStem, quality);
+  } catch (err) {
+    if (pick) throw err; // the tile was found and the download itself failed: no point scanning again
+  } finally {
+    await clearProjectSearch(page).catch(() => {});
+    await showAllMedia(page).catch(() => {});
+  }
   await ensureProjectGrid(page);
   const matches = (a: FlowAsset) => a.name.toLowerCase().startsWith(name.toLowerCase());
   const found = (await scanGrid(page, (assets) => assets.some(matches))).find(matches);
@@ -1141,6 +1183,55 @@ async function clearProjectSearch(page: Page): Promise<void> {
     await box.press("Enter").catch(() => {});
     await pause(page, 1200);
   }
+}
+
+// Renames images/clips in the open project through the tile menu's "Rename" (mapped live 2026-10-20: it turns the tile's title
+// into an inline input "Editable text" holding the old name; Enter saves, the dialog's "close" cancels). Each title must match
+// exactly one item (an exact title wins over a longer one starting with it), and the new name must not already be in use,
+// because duplicate titles are what makes trashing and downloading ambiguous.
+export async function renameAssets(renames: { asset: string; new_name: string }[]): Promise<{ renamed: { from: string; to: string }[]; skipped: { asset: string; why: string }[] }> {
+  const state = await getFlowState();
+  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
+  const page = await getFlowPage();
+  await ensureProjectGrid(page);
+  const renamed: { from: string; to: string }[] = [];
+  const skipped: { asset: string; why: string }[] = [];
+  try {
+    for (const r of renames) {
+      try {
+        const to = r.new_name.trim();
+        if (!to) throw new Error("the new name is empty");
+        await searchProject(page, to);
+        if ((await searchedMatches(page, to)).some((a) => a.name.toLowerCase() === to.toLowerCase())) throw new Error(`"${to}" already exists`);
+        await searchProject(page, r.asset.replace(/…$/, ""));
+        const hits = await searchedMatches(page, r.asset.replace(/…$/, ""));
+        const exact = hits.filter((a) => a.name.toLowerCase() === r.asset.toLowerCase());
+        const chosen = exact.length ? exact : hits;
+        if (!chosen.length) throw new Error("nothing has that title");
+        if (chosen.length > 1) throw new Error(`${chosen.length} items match; give the exact title`);
+        const tile = tileOf(page, chosen[0]);
+        await tile.scrollIntoViewIfNeeded();
+        await hoverTile(page, tile);
+        await tile.getByRole("button", { name: "More options" }).click();
+        await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+        const field = page.locator('input[aria-label="Editable text"]').last();
+        await field.waitFor({ state: "visible", timeout: 6000 });
+        await field.fill(to);
+        await field.press("Enter");
+        await pause(page, 1500);
+        await searchProject(page, to);
+        if (!(await searchedMatches(page, to)).some((a) => a.name.toLowerCase() === to.toLowerCase())) throw new Error("Flow did not keep the new name");
+        renamed.push({ from: chosen[0].name, to });
+      } catch (err) {
+        await page.keyboard.press("Escape").catch(() => {});
+        skipped.push({ asset: r.asset, why: (err as Error).message.split("\n")[0] });
+      }
+    }
+  } finally {
+    await clearProjectSearch(page).catch(() => {});
+    await showAllMedia(page).catch(() => {});
+  }
+  return { renamed, skipped };
 }
 
 // Moves one item in the open project to Flow's Trash. Flow keeps it there with Restore and Delete permanently, so this

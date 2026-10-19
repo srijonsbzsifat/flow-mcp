@@ -202,6 +202,18 @@ server.registerTool(
 );
 
 server.registerTool(
+  "flow_rename",
+  {
+    title: "Rename images or clips in Flow",
+    description:
+      "Rename generated images or clips in the open Flow project (the tile menu's Rename), up to 60 per call, each matched by its current title. Refuses a new name that already exists and an ambiguous current title, and reports what it skipped. Use it to give agent-made images the names the user wants (e.g. scene01_the_last_warning_v01) so later references and downloads are exact.",
+    inputSchema: shapes.rename,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_rename", core.rename(args))),
+);
+
+server.registerTool(
   "flow_trash",
   {
     title: "Move an item to Flow's Trash",

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { assemble, localVoices, speakLocally } from "./assemble.js";
 import { GEMINI_VOICES, geminiKey, saveGeminiKey, speakWithGemini } from "./gemini.js";
 import { extractLastFrame } from "./chain.js";
-import { finishCustomVoice, previewCustomVoice, listProjects, openProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
+import { finishCustomVoice, previewCustomVoice, listProjects, openProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, renameAssets, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
 import { JobQueue, type Job } from "./queue.js";
 import { BIN, COMPUTER, IS_MAC, IS_WIN, moveToBin } from "./platform.js";
 import { TECHNIQUES, techniqueById } from "./techniques.js";
@@ -169,6 +169,18 @@ export const shapes = {
       .optional()
       .describe("Skip the guard that refuses to run when Flow already holds a fresh-looking continuation of this clip. Only pass it when you have checked the grid and genuinely want another paid take."),
   },
+  rename: {
+    renames: z
+      .array(
+        z.object({
+          asset: z.string().min(1).describe("Current title, as listed by flow_assets (the exact title, or its start)."),
+          new_name: z.string().min(1).max(120).describe("New title. Must not already exist in the project."),
+        }),
+      )
+      .min(1)
+      .max(60)
+      .describe("Images or clips to rename in Flow, each matched by its current title. Renaming never touches the file's content."),
+  },
   trash: { name: z.string().min(1).describe("Exact title of the item to move to Flow's Trash, as listed by flow_assets.") },
   set_key: { key: z.string().min(1).max(200) },
   discard: { path: z.string().min(1).describe("A saved film, still, narration or whole project folder inside the films folder, to move to this computer's bin (Mac Trash, Windows Recycle Bin).") },
@@ -284,6 +296,7 @@ export interface Core {
   character_edit(a: Args<"character_edit">): Promise<unknown>;
   custom_voice(a: Args<"custom_voice">): Promise<unknown>;
   edit(a: Args<"edit">): Promise<unknown>;
+  rename(a: Args<"rename">): Promise<unknown>;
   trash(a: Args<"trash">): Promise<unknown>;
   discard(a: Args<"discard">): Promise<unknown>;
   set_key(a: Args<"set_key">): Promise<unknown>;
@@ -554,6 +567,11 @@ export class LocalCore implements Core {
     if (!rel || rel.startsWith("..") || isAbsolute(rel)) throw new Error("Only things inside your films folder can be moved to the bin from here.");
     if (!existsSync(target)) throw new Error("That file is already gone.");
     return { trashed: target, to: moveToBin(target), bin: BIN };
+  }
+
+  async rename({ renames }: Args<"rename">) {
+    if (this.queue.busy) throw new Error(BUSY);
+    return renameAssets(renames);
   }
 
   async trash({ name }: Args<"trash">) {

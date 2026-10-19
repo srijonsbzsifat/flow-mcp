@@ -532,3 +532,11 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   might trip) rather than retrying forever. `scanGrid` now flags failed tiles (`failed`) so they are never downloaded (a batch hung
   ~10 minutes on "Failed to download media" trying to download one), the agent's second round tells it to reword, and the job note
   quotes Flow's message.
+
+## Search-based download and rename (2026-10-20)
+- `downloadAsset` now finds the tile through the top-bar search (like trash), reads the filtered tiles (`readTiles`/`searchedMatches`:
+  title starts with the name, exact title first, then still images before clips of the same name) and downloads it; scroll-scan is
+  only the fallback. ~9 s per asset. The search also matches prompt text, so other tiles can appear: only title matches count.
+- Rename: tile "More options" -> "Rename" turns the title into `input[aria-label="Editable text"]` holding the old name; fill + Enter
+  saves. `renameAssets` (tool `flow_rename`, up to 60) checks the new name is unused first (duplicate titles break trash/download
+  matching) and verifies after by searching for it. Tested live: rename, rename back, duplicate refused.
