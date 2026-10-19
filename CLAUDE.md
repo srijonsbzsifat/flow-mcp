@@ -514,3 +514,14 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   "Delete custom voice" button) and "Add to character" appears. `finishCustomVoice` does both. `readVoice` now returns the voice NAME
   alone (second text line of the voice button; the aria label carries the description / the whole performance text).
   Sami = "Fenrir Sami" (custom, Fenrir + youthful-child performance), verified.
+
+## Agent side panel + same-name clips (2026-10-19)
+- Agent mode can open as a panel down the RIGHT (prompt box "Expand", or a session left open): `flow-agent-panel` with its own
+  composer, "Settings" and a "Close" button (header: Open session history / Start new session / Close). While it is open the
+  bottom prompt box lookup for "Settings" matches two buttons (strict-mode failure) and the singles fallback typed into the wrong
+  composer. `closeAgentPanel` (called from `ensureProjectGrid`, `setAgentMode`, `setAgentSettings`) clicks Close first; the
+  bottom composer then returns.
+- A still and the clip made from it share a name ("scene 1_X" / "scene 1_X_Video"); the clip is newer, so the picker's prefix match
+  attached the VIDEO as the reference. `attachAsset` now prefers an option named exactly the asset (or "<asset> Image").
+- The Studio monitor kept saying "running, 5/5" while Flow showed nothing: it reports the job's own step, which was the one-by-one
+  fallback typing into the wrong composer. A failed first agent round means check Flow's window, not the monitor.
