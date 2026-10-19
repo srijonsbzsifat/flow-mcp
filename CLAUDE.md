@@ -540,3 +540,10 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
 - Rename: tile "More options" -> "Rename" turns the title into `input[aria-label="Editable text"]` holding the old name; fill + Enter
   saves. `renameAssets` (tool `flow_rename`, up to 60) checks the new name is unused first (duplicate titles break trash/download
   matching) and verifies after by searching for it. Tested live: rename, rename back, duplicate refused.
+
+## First/last-frame clips: frames beat prompts (2026-10-20)
+- Zombie clip 2: the start still drew Mina facing the camera and the end frame drew her bigger and nearer, so the model walked her toward
+  the camera (up the stairs) while Eli walked away (down), against the prompt. Before generating, compare per character the direction the
+  body faces, the size change (bigger = toward the camera) and the left/right order between first and last frame; if that contradicts the
+  scripted movement, regenerate the frame. A "note for the prompt" is not a fix.
+- Agent mode has no Start/End frame slots, so clip generation stays in the normal composer (one clip at a time, quoted credits, max_credits guard).
