@@ -138,6 +138,16 @@ export async function mediaIds(page: Page): Promise<string[]> {
   );
 }
 
+// Every media id in the project, not just the tiles that happen to be drawn: the grid is virtualised, so a snapshot of the
+// visible tiles misses older ones, and when one of those is drawn later it looks "new" and gets picked as the result of the job
+// (2026-10-20: the downloaded file for a new clip was an older, renamed clip). Videos are tracked by title, like TILE_ID_JS.
+export async function snapshotIds(page: Page): Promise<string[]> {
+  const visible = await mediaIds(page);
+  const all = await scanGrid(page).catch(() => [] as FlowAsset[]);
+  await scrollToTop(page);
+  return [...new Set([...visible, ...all.map((a) => a.id ?? `title:${a.name}`)])];
+}
+
 // The grid is virtualised and the top bar hides once it is scrolled, so every step starts from the top,
 // where new tiles appear.
 async function scrollToTop(page: Page): Promise<void> {
@@ -884,7 +894,7 @@ export async function runGeneration(job: Job): Promise<string[]> {
   const start = page.getByRole("button", { name: "Start generation" });
   if (!(await start.isEnabled())) throw new Error("Flow's Start generation button is disabled; the prompt or inputs were not accepted.");
   await scrollToTop(page);
-  const before = await mediaIds(page);
+  const before = await snapshotIds(page);
   await start.click();
 
   const variants = s.variants ?? 1;
@@ -1701,7 +1711,7 @@ export async function runEdit(job: Job): Promise<string[]> {
   const balance = await readCredits(page).catch(() => undefined);
   // New tiles always appear at the top, so the "before" snapshot is taken there, ahead of the search: scrolling
   // back to the top after the scan would unmount the tile we are about to click (the grid is virtualised).
-  const before = await mediaIds(page);
+  const before = await snapshotIds(page);
   const matches = (a: FlowAsset) => a.kind === "video" && a.name.toLowerCase().startsWith(title.toLowerCase());
   const found = (await scanGrid(page, (assets) => assets.some(matches))).find(matches);
   if (!found) throw new Error(`No video whose title starts with "${title}". Use flow_assets to list titles.`);
@@ -2091,7 +2101,7 @@ export async function runContinue(job: Job): Promise<string[]> {
           `so the look and the person stay consistent through the clip. Open as close to the attached frame as you can.`) +
         ` ${s.prompt}`,
     );
-    const before = await mediaIds(page);
+    const before = await snapshotIds(page);
     job.progress = "generating";
     await page.getByRole("button", { name: "Start generation" }).click();
 

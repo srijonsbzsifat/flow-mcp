@@ -547,3 +547,9 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   body faces, the size change (bigger = toward the camera) and the left/right order between first and last frame; if that contradicts the
   scripted movement, regenerate the frame. A "note for the prompt" is not a fix.
 - Agent mode has no Start/End frame slots, so clip generation stays in the normal composer (one clip at a time, quoted credits, max_credits guard).
+- Wrong clip downloaded (2026-10-20, zombie clip 3): `before` was a snapshot of the tiles DRAWN at job start (`mediaIds`); the grid is
+  virtualised, so older clips lower down were not in it, got drawn later while the new clip was still rendering ("busy"), and were
+  taken as the result (the file downloaded was the old scene 5 first try; the real clip sat unrenamed in Flow, 10 credits spent).
+  `snapshotIds` now unions the visible ids with a full `scanGrid` (videos by `title:<label>`) at all three job starts. After a
+  clip job, check the downloaded file really is the new clip (look at its frames), and if not, find the unrenamed tile in
+  `flow_assets` (Flow's own short title), rename it and `flow_download` it; the credits were not lost.
