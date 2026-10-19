@@ -467,7 +467,13 @@ export async function attachAsset(page: Page, opener: Locator, assetName: string
       await pause(page, 800);
     }
   }
-  let option = optionByName(list, assetName);
+  // A still and the clip made from it share a name ("scene 1_X" and "scene 1_X_Video"), and the clip is the newer, so a plain
+  // prefix match attached the VIDEO as the reference (2026-10-19). An option named exactly the asset (or "<asset> Image") wins.
+  const find = async (): Promise<Locator> => {
+    const exactly = list.getByRole("option", { name: new RegExp(`^${escapeRe(assetName)}(\\s+Image)?$`, "i") }).first();
+    return (await exactly.isVisible().catch(() => false)) ? exactly : optionByName(list, assetName);
+  };
+  let option = await find();
   // The list renders only the first options (newest first), so an image further down - a location plate, an older still -
   // is simply not there to click: attaching plates failed that way in agent AND normal mode (2026-10-19). The picker's
   // own search box reaches everything, so use it before anything else.
@@ -476,6 +482,7 @@ export async function attachAsset(page: Page, opener: Locator, assetName: string
     await pause(page, 1500);
     option = optionByName(list, assetName);
     await option.waitFor({ state: "visible", timeout: 6000 }).catch(() => {});
+    option = await find();
   }
   // Voices, characters and avatars live behind their own tabs, so look there when "All" does not have it.
   if (!(await option.isVisible().catch(() => false))) {
@@ -484,7 +491,7 @@ export async function attachAsset(page: Page, opener: Locator, assetName: string
       if (!(await t.isVisible().catch(() => false))) continue;
       await t.click();
       await pause(page, 1200);
-      option = optionByName(list, assetName);
+      option = await find();
       if (await option.isVisible().catch(() => false)) break;
     }
   }
@@ -816,6 +823,7 @@ async function showAllMedia(page: Page, thorough = false): Promise<void> {
 
 async function ensureProjectGrid(page: Page): Promise<void> {
   await dismissOverlays(page);
+  await closeAgentPanel(page);
   const root = page.url().match(/^https:\/\/[^/]+\/project\/[0-9a-f-]{36}/)?.[0];
   // Compared by path: an address ending in ?hl=en is already the grid.
   if (root && new URL(page.url()).pathname !== new URL(root).pathname) {
@@ -1640,6 +1648,18 @@ export async function runEdit(job: Job): Promise<string[]> {
 // The agent session panel hides the composer, so a toggle attempted underneath it does nothing at all. Leaving agent
 // mode on then breaks the NEXT job, which expects the plain composer - a free character build failed that way. So this
 // confirms the toggle actually landed rather than assuming the click worked.
+// Agent mode can also open as a panel down the right-hand side (the prompt box's "Expand", or an agent session left open).
+// That panel carries its own composer and its own "Settings" button, so every lookup scoped to the bottom prompt box matched
+// two buttons and failed the batch (2026-10-19), and typing went into the wrong composer. Its "Close" brings the centred
+// bottom composer back.
+async function closeAgentPanel(page: Page): Promise<void> {
+  const close = page.locator("flow-agent-panel").getByRole("button", { name: "Close", exact: true });
+  if (await close.isVisible().catch(() => false)) {
+    await close.click().catch(() => {});
+    await pause(page, 1200);
+  }
+}
+
 async function setAgentMode(page: Page, on: boolean): Promise<void> {
   const agent = page.getByRole("button", { name: "Agent", exact: true });
   // Playwright says why a click did not land ("<div ...> intercepts pointer events", "element is not visible"); keep
@@ -1647,6 +1667,7 @@ async function setAgentMode(page: Page, on: boolean): Promise<void> {
   let why = "";
   for (let attempt = 0; attempt < 3; attempt++) {
     await clearBackdrops(page);
+    await closeAgentPanel(page);
     await closeAgentSettings(page);
     if (((await agent.getAttribute("aria-pressed").catch(() => null)) === "true") === on) return;
     await agent.click({ timeout: 8000 }).catch((err: Error) => {
@@ -1665,6 +1686,7 @@ async function setAgentSettings(page: Page, confirm: "Always" | "Never", imageAs
   // Scoped to the prompt box: Flow added a second "Settings" button to the top bar ("View settings", seen 2026-10-13),
   // and an unscoped lookup matched both and failed every agent batch.
   await clearBackdrops(page);
+  await closeAgentPanel(page);
   await page.locator("flow-base-prompt-box").getByRole("button", { name: "Settings", exact: true }).click();
   try {
     await page.getByRole("heading", { name: "Agent settings" }).waitFor({ state: "visible", timeout: 8000 });
