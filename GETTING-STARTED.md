@@ -40,7 +40,7 @@ and connects the tool to itself, so there is no separate "connect" step.
 
 **1.** Open your assistant and paste this:
 
-> *Set up Flow MCP from https://github.com/GTAI-1/flow-mcp for me. Install anything it needs that I don't
+> *Set up Flow MCP from https://github.com/srijonsbzsifat/flow-mcp for me. Install anything it needs that I don't
 > have yet (Node.js 22 or newer, Google Chrome and FFmpeg), put it in my home folder, build
 > it, connect it to yourself, then run `npm run login`.*
 
@@ -105,7 +105,7 @@ cd ~
 ```
 
 ```bash
-git clone https://github.com/GTAI-1/flow-mcp.git
+git clone https://github.com/srijonsbzsifat/flow-mcp.git
 ```
 
 ```bash

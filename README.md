@@ -36,7 +36,7 @@ headless or asleep mid-run.
 ## Install
 
 ```bash
-git clone https://github.com/GTAI-1/flow-mcp.git
+git clone https://github.com/srijonsbzsifat/flow-mcp.git
 cd flow-mcp
 npm install
 npm run build
@@ -111,6 +111,26 @@ the first one started drives Flow, and the others pass their requests to it.
 
 Restart the app, then ask it: *"check my Flow session"*. You should get your plan and credit balance
 back. Everything after that is plain English; you never type tool names.
+
+### Teach your assistant how to use it (recommended)
+
+This folder's `CLAUDE.md` holds everything learned about driving Flow, but an assistant only reads it when it is
+working inside this folder. To get the same habits from any folder, add this to your own global notes
+(Claude Code: `~/.claude/CLAUDE.md`; other apps have a similar "custom instructions" file). Replace the path with
+where you put the folder:
+
+```text
+## Flow MCP (Google Flow video/image tools)
+
+The `flow` MCP server lives in /absolute/path/to/flow-mcp (not tied to any one working folder).
+Read its CLAUDE.md before driving Flow: it holds the UI map and every lesson learned. Standing rules:
+check flow_status for the open project first (everything is per project; switch with flow_open_project only
+after the user says which); give every new character a voice (`voice`, or `voice_from` for copies or
+outfit variants); generate ALL images from the script before any video; announce batch size, tool and
+references before each batch; look at every generated image; never start a video without the user's go
+and a credit estimate.
+```
+
 
 ---
 
@@ -250,6 +270,10 @@ build."* Then fully quit and reopen your assistant app so it loads the new versi
 ---
 
 ## Licence and risk
+
+This is a fork of [GTAI-1/flow-mcp](https://github.com/GTAI-1/flow-mcp) with added project switching, search-based
+trash, character voices, agent batches that keep characters and reference images attached, and real-name
+downloads. The original has no licence file, so keep this to yourself and people you know.
 
 This automates Flow's web interface. It can break whenever Google changes that interface, and
 automated use may be against Google's terms of service. Use it on your own account, at your own
