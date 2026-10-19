@@ -554,3 +554,17 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   clip job, check the downloaded file really is the new clip (look at its frames), and if not, find the unrenamed tile in
   `flow_assets` (Flow's own short title), rename it and `flow_download` it; the credits were not lost.
 - Clip 4 teleport (2026-10-20): first frame Eli outside facing the camera, last frame Eli inside with his back to the camera. A 180-degree turn plus passing the door leaf made the model hide him behind the door and re-show him inside. Rule: no big facing change or occluder crossing between first and last frame; end frame = just past the occluder, same facing; split into two clips if the beat needs both.
+
+## Agent mode for VIDEO (explored 2026-10-20, zombie clip 4 test)
+- Agent settings (right panel, Back at the top) have "Confirm before generating: Always|Never", "Image generation default" and
+  "Video generation default" (16:9 / 9:16, x1-x4, model Omni 1.1 Flash). Keep Always: it is a credit gate.
+- Flow with first-frame, last-frame and characters attached, prompt asking for ONE 6 s 720p video: the agent answers with a
+  conflict message: "interpolation (exact first/last frame) does not support audio references or character entity IDs", the price
+  ("10 credits"), and two radio choices: "Use Interpolation (No audio/voice)" or "Use Reference-to-Video (Includes the voice, but
+  less control over start/end frames)". After the choice it asks "kick off this 1 video generation, costing 10 credits?" with
+  Approve / Always approve / Reject (never press Always approve). Approve is not a <button>: click
+  `flow-agent-panel` getByText("Approve", {exact:true}). Then "scheduled and waiting in the queue due to high demand".
+- The agent's first reply may be an error "We noticed some unusual activity ..." with a "Try again" button; pressing it (once or
+  twice) works. Automation must click "Try again" itself.
+- Clicking Back on the agent settings can be blocked by an info-icon tooltip overlay: use `click({force:true})`.
+- The agent-made image batch used to leave unmatched extras; trash them.
