@@ -448,7 +448,7 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   3. The asset picker (`+` / ingredients) lists only the first (newest) options, so a location plate or older still further down
      was not clickable: attaching plates failed in agent AND normal mode. attachAsset now clears the picker's `Search assets` box
      and searches by name before falling back to the tabs.
-  4. `flow_agent_images` `references` (max 8 image titles; plates, start-frame stills) are attached next to the characters.
+  4. `flow_agent_images` `references` (max 20 image titles; the user verified 3 characters + 17 images works by hand, so do not be stingy: generate the image you need and reference it; plates, start-frame stills) are attached next to the characters.
      The agent has no Start-frame slot, so each scene's text must say "location: <title>" or "start frame: <title>"; a generic
      sentence in the ask explains that. Verified: 2 characters + 2 plates + 1 start frame, 3 scenes, all from the agent in 172 s,
      plates and the start frame's composition honoured, characters on-model (a character can still come out small in a wide shot).

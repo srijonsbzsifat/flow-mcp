@@ -96,7 +96,7 @@ export const shapes = {
       ),
     references: z
       .array(z.string().min(1))
-      .max(8)
+      .max(20)
       .optional()
       .describe(
         "Reference IMAGES already in the open project, by title (location plates, earlier stills used as start frames), attached to the agent next to the characters. The agent has no Start-frame slot, so each scene's text must say what each is for, using the exact title: 'location: Banyan tree on grassy bank' or 'start frame: Scene_Images-scene-01'.",
