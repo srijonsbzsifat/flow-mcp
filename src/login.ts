@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // One-time setup: opens the dedicated Chrome profile on Flow so the user can sign in by hand.
-import { getFlowPage, PROFILE_DIR } from "./chrome.js";
+// Another account: set FLOW_MCP_ACCOUNT=<name> (made with flow_use_account first) before running this.
+import { getFlowPage, profileDir } from "./chrome.js";
 
 const page = await getFlowPage();
 await page.bringToFront();
 console.log(`Chrome is open on ${page.url()}`);
-console.log(`Profile: ${PROFILE_DIR}`);
+console.log(`Profile: ${profileDir()}`);
 console.log("Sign in to Google in that window, then open or create a Flow project. The session is kept for next time.");
 process.exit(0);

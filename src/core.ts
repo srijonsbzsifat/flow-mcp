@@ -11,7 +11,7 @@ import { BIN, COMPUTER, IS_MAC, IS_WIN, moveToBin } from "./platform.js";
 import { TECHNIQUES, techniqueById } from "./techniques.js";
 
 export { OUTPUT_ROOT } from "./chrome.js";
-import { OUTPUT_ROOT } from "./chrome.js";
+import { OUTPUT_ROOT, getFlowPage, listAccounts, signedInAs, useAccount } from "./chrome.js";
 const words = (s: string) => s.split(/[^a-z0-9]+/i).filter((w) => w.length > 3).map((w) => w.toLowerCase());
 
 export const projectDir = (project: string) => resolve(OUTPUT_ROOT, project.replace(/[^\w.-]+/g, "_"));
@@ -115,6 +115,12 @@ export const shapes = {
     user_confirmed: z
       .literal(true)
       .describe("Must be true, and only after the USER has said in chat which project to switch to. Everything afterwards (characters, assets, generations, trash) acts on that project."),
+  },
+  accounts: {},
+  use_account: {
+    account: z.string().min(1).describe("Account name as listed by flow_accounts, e.g. 'main', 'work'. A new name needs create: true."),
+    create: z.boolean().optional().describe("Make a new account (a fresh Chrome profile the user signs in to by hand). Only when the user asked for a new one."),
+    user_confirmed: z.literal(true).describe("Must be true, and only after the USER has said in chat which account to switch to."),
   },
   voices: {},
   narrate: {
@@ -253,6 +259,8 @@ export interface Core {
   techniques(a: Args<"techniques">): Promise<unknown>;
   projects(): Promise<unknown>;
   open_project(a: Args<"open_project">): Promise<unknown>;
+  accounts(): Promise<unknown>;
+  use_account(a: Args<"use_account">): Promise<unknown>;
   voices(): Promise<unknown>;
   narrate(a: Args<"narrate">): Promise<unknown>;
   character(a: Args<"character">): Promise<unknown>;
@@ -591,6 +599,24 @@ export class LocalCore implements Core {
   async open_project({ project }: Args<"open_project">) {
     if (this.queue.busy) throw new Error(BUSY);
     return openProject(project);
+  }
+
+  async accounts() {
+    const accounts = listAccounts();
+    return { accounts, signed_in_as: this.queue.busy ? undefined : await signedInAs(await getFlowPage()) };
+  }
+
+  async use_account({ account, create }: Args<"use_account">) {
+    if (this.queue.busy) throw new Error(BUSY);
+    await useAccount(account, create ?? false);
+    const page = await getFlowPage();
+    await page.bringToFront();
+    const signed_in_as = await signedInAs(page);
+    return {
+      account,
+      signed_in_as,
+      note: signed_in_as ? "Switched. Projects, characters and assets now come from this Google account; use flow_projects to see them." : "This account's Chrome is open but nobody is signed in. Ask the user to sign in to Google by hand in that window (never type their password), then call flow_status.",
+    };
   }
 
   async voices() {

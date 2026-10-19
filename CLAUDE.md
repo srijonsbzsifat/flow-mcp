@@ -488,3 +488,12 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
 - TRASH GUARD WAS BLIND TO DUPLICATES: scanGrid keeps one entry per title, so trashAsset's "two items share this name"
   check never fired and it trashed one of several same-titled tiles. countTitled() counts copies by media id (images)
   and by how many show at once (id-less videos). Verified: three "Red fox sitting in snow" -> refused.
+
+## Multiple Google accounts (2026-10-19)
+- One Chrome profile + debugging port per account, all in chrome.ts. "main" = the original `chrome-profile` on port 9333 (old logins
+  keep working); others are `chrome-profile-<name>` on the next free port, recorded in `accounts.json`; the active one is kept in
+  `account.txt` (env FLOW_MCP_ACCOUNT overrides). Chromes of other accounts stay open; switching drops the CDP connection and
+  `getBrowser` reconnects to the new port. Tools `flow_accounts` (list + who is signed in, read from the avatar link's
+  "Google Account: Name (email)" aria-label) and `flow_use_account` (needs `user_confirmed`, `create` for new, refused while busy).
+- Projects, characters, assets and credits are per ACCOUNT as well as per project; voices.json/characters.json in FLOW_MCP_HOME are
+  shared across accounts by character name. After a switch call `flow_projects` before assuming anything exists.

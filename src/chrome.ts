@@ -16,9 +16,55 @@ export const inEnglish = (url: string): string => {
 };
 const FLOW_HOSTS = /^https:\/\/(flow\.google\.com|labs\.google\/fx)/;
 export const HOME_DIR = process.env.FLOW_MCP_HOME ?? join(homedir(), ".flow-mcp");
-export const PROFILE_DIR = join(HOME_DIR, "chrome-profile");
 export const CDP_PORT = Number(process.env.FLOW_MCP_CDP_PORT ?? 9333);
-const CDP_URL = `http://127.0.0.1:${CDP_PORT}`;
+
+// One Chrome profile (and one debugging port) per Google account. "main" is the original profile and port, so existing
+// logins keep working; every other account gets chrome-profile-<name> and the next free port, remembered in accounts.json.
+// Every account's Chrome can stay open side by side; switching only changes which one the tools talk to.
+const ACCOUNTS_FILE = join(HOME_DIR, "accounts.json");
+const CURRENT_FILE = join(HOME_DIR, "account.txt");
+const readAccounts = (): Record<string, number> => {
+  try {
+    return JSON.parse(readFileSync(ACCOUNTS_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+};
+let current = (process.env.FLOW_MCP_ACCOUNT ?? (existsSync(CURRENT_FILE) ? readFileSync(CURRENT_FILE, "utf8").trim() : "")) || "main";
+if (current !== "main" && !(current in readAccounts())) current = "main";
+
+export const currentAccount = (): string => current;
+export const profileDir = (account = current): string => join(HOME_DIR, account === "main" ? "chrome-profile" : `chrome-profile-${account}`);
+const cdpPort = (account = current): number => (account === "main" ? CDP_PORT : readAccounts()[account]);
+const cdpUrl = (): string => `http://127.0.0.1:${cdpPort()}`;
+
+export function listAccounts(): { name: string; active: boolean; signed_in_before: boolean }[] {
+  return ["main", ...Object.keys(readAccounts())].map((name) => ({ name, active: name === current, signed_in_before: existsSync(join(profileDir(name), "Default")) }));
+}
+
+// Points the tools at another account's Chrome (launched on the next call). A name that does not exist yet is only
+// created when `create` is set, so a typo cannot quietly make a new empty profile.
+export async function useAccount(name: string, create: boolean): Promise<void> {
+  if (!/^[\w-]{1,30}$/.test(name)) throw new Error("Account names are 1-30 letters, digits, - or _.");
+  const accounts = readAccounts();
+  if (name !== "main" && !(name in accounts)) {
+    if (!create) throw new Error(`No account called "${name}". Known: ${listAccounts().map((a) => a.name).join(", ")}. To make a new one, ask again with create: true.`);
+    accounts[name] = Math.max(CDP_PORT, ...Object.values(accounts)) + 1;
+    mkdirSync(HOME_DIR, { recursive: true });
+    writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts));
+  }
+  current = name;
+  writeFileSync(CURRENT_FILE, name);
+  await browser?.close().catch(() => {}); // only disconnects; the previous account's Chrome window stays open
+  browser = null;
+}
+
+// "Google Account: Name (email)" as Flow's avatar button words it; null when not signed in.
+export async function signedInAs(page: Page): Promise<string | null> {
+  return page
+    .evaluate(() => document.querySelector('a[aria-label^="Google Account"]')?.getAttribute("aria-label") ?? null)
+    .catch(() => null);
+}
 
 const CHROME_PATHS = [
   process.env.FLOW_MCP_CHROME,
@@ -34,7 +80,7 @@ let browser: Browser | null = null;
 
 async function cdpUp(): Promise<boolean> {
   try {
-    const res = await fetch(`${CDP_URL}/json/version`, { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(`${cdpUrl()}/json/version`, { signal: AbortSignal.timeout(1500) });
     return res.ok;
   } catch {
     return false;
@@ -55,7 +101,7 @@ export const USER_DOWNLOAD_DIR = process.env.FLOW_MCP_USER_DOWNLOADS ?? join(hom
 // Chrome reads its own default download folder from the profile's Preferences file and rewrites that file when it
 // exits, so it can only be changed while Chrome is NOT running: right before launching it.
 function pointChromeDownloadsAt(dir: string): void {
-  const file = join(PROFILE_DIR, "Default", "Preferences");
+  const file = join(profileDir(), "Default", "Preferences");
   if (!existsSync(file)) return; // a brand-new profile has none yet; the first run's own default applies
   try {
     mkdirSync(dir, { recursive: true });
@@ -75,13 +121,13 @@ async function launchChrome(): Promise<void> {
   if (!chromePath) {
     throw new Error("Google Chrome not found. Set FLOW_MCP_CHROME to the Chrome executable path.");
   }
-  mkdirSync(PROFILE_DIR, { recursive: true });
+  mkdirSync(profileDir(), { recursive: true });
   pointChromeDownloadsAt(USER_DOWNLOAD_DIR);
   const child = spawn(
     chromePath,
     [
-      `--user-data-dir=${PROFILE_DIR}`,
-      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${profileDir()}`,
+      `--remote-debugging-port=${cdpPort()}`,
       "--no-first-run",
       "--no-default-browser-check",
       inEnglish(FLOW_URL),
@@ -93,13 +139,13 @@ async function launchChrome(): Promise<void> {
     if (await cdpUp()) return;
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(`Chrome started but CDP port ${CDP_PORT} never came up.`);
+  throw new Error(`Chrome started but CDP port ${cdpPort()} never came up.`);
 }
 
 export async function getBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
   if (!(await cdpUp())) await launchChrome();
-  browser = await chromium.connectOverCDP(CDP_URL);
+  browser = await chromium.connectOverCDP(cdpUrl());
   return browser;
 }
 

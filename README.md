@@ -202,6 +202,8 @@ agree on what is running. That API listens on 127.0.0.1 only and needs a per-run
 | `flow_status` | Session state (signed in, **which project is open**, plan, credits left), queue, pacing, prompt playbook |
 | `flow_projects` | List the projects on your Flow home page and say which one is open. Everything else acts on the OPEN project only (characters, assets and trash are per project) |
 | `flow_open_project` | Switch the Flow tab to another existing project, by title or link. Needs `user_confirmed: true`, meaning the person told the assistant which project; never creates or deletes a project |
+| `flow_accounts` | List the Google accounts set up for Flow (each its own Chrome profile with its own projects and credits), which is active and who is signed in |
+| `flow_use_account` | Switch to another account's Chrome (the other stays open), or `create: true` for a new one you sign in to by hand. Needs `user_confirmed: true` |
 | `flow_generate` | Queue scenes: prompt, image or video, model, aspect, duration, resolution, variants, first/last frame, reference images, `max_credits` cap |
 | `flow_wait` | Wait for jobs, or for the task id of a slow call; returns file paths and results. Answers within about 40 s, so call again until `finished` is true |
 | `flow_cancel` | Cancel a job that has not started |

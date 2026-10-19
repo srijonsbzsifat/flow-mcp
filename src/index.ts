@@ -274,6 +274,30 @@ server.registerTool(
 );
 
 server.registerTool(
+  "flow_accounts",
+  {
+    title: "List Flow Google accounts",
+    description:
+      "List the Google accounts set up for Flow (each has its own Chrome profile and its own projects, characters and credits), which one is active, and who is signed in there. Check this before blaming a missing project on anything else.",
+    inputSchema: shapes.accounts,
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  () => reply(patient("flow_accounts", core.accounts())),
+);
+
+server.registerTool(
+  "flow_use_account",
+  {
+    title: "Switch Flow Google account",
+    description:
+      "Switch to another Google account's Chrome profile (the other account's window stays open). ONLY after the user has said in chat which account (set user_confirmed: true). With create: true a brand-new profile is made and the USER signs in by hand; never type a password. Refused while generations are running.",
+    inputSchema: shapes.use_account,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_use_account", core.use_account(args))),
+);
+
+server.registerTool(
   "flow_techniques",
   {
     title: "Film technique presets",
