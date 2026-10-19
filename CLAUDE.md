@@ -568,3 +568,6 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   twice) works. Automation must click "Try again" itself.
 - Clicking Back on the agent settings can be blocked by an info-icon tooltip overlay: use `click({force:true})`.
 - The agent-made image batch used to leave unmatched extras; trash them.
+
+## Clip prompt template that worked (2026-10-20)
+For first+last-frame clips write: SET GEOGRAPHY (fixed props, hinge side, swing direction, which opening the characters use, handles on both faces), POSITION OF EACH CHARACTER SECOND BY SECOND (outside/inside, facing, hands, "walks through the opening, never through the leaf"), the reason for anyone absent in the end frame ("nobody is visible because X is inside behind the closed door"), and a FORBIDDEN line (the exact failure seen before: closing from outside, vanishing, passing through an object, body turning to camera, head turning more than a quick glance). Zombie clip 4: the plain timeline teleported Eli, this structure did not (same frames). Test at 360p (half price, 5 credits per 6 s), final at 720p upscaled.
