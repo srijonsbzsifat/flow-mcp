@@ -1961,8 +1961,20 @@ async function agentRound(
   const stop = page.getByRole("button", { name: "Stop", exact: true });
   let idleSince = 0;
   let timedOut = false;
+  let triedAgain = 0;
   for (;;) {
     await pause(page, 3000);
+    // The agent can answer with "We noticed some unusual activity ..." and a "Try again" button; pressing it once or twice
+    // works (2026-10-20, the user did it by hand). Press it ourselves, up to three times.
+    const again = page.locator("flow-agent-panel").getByRole("button", { name: "Try again", exact: true });
+    if (triedAgain < 3 && (await again.isVisible().catch(() => false))) {
+      triedAgain++;
+      step(job, `the agent showed an error, pressing Try again (${triedAgain})`);
+      await again.click().catch(() => {});
+      await pause(page, 4000);
+      idleSince = 0;
+      continue;
+    }
     const main = await page.locator("main").first().innerText();
     const pending = main.match(/\d+%/g) ?? [];
     const working = pending.length > 0 || (await stop.isVisible().catch(() => false));
