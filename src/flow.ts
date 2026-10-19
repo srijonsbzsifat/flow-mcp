@@ -1321,9 +1321,13 @@ async function openCharacter(page: Page, name: string): Promise<void> {
 async function readVoice(page: Page): Promise<string | undefined> {
   const snap = await page.locator("main").first().ariaSnapshot();
   if (/button "Select a voice"/.test(snap)) return undefined;
-  const lines = snap.split(/\r?\n/);
-  const at = lines.findIndex((l) => l.includes('button "Play preview"'));
-  return at > 0 ? lines[at - 1].match(/button "([^"]+)"/)?.[1] : undefined;
+  // The voice button's accessible name is the name plus its description ("Fenrir Male, excitable, younger pitch", or for a
+  // custom voice its whole performance text); its text has the name alone on the second line, after the icon's.
+  return page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll("main button"));
+    const at = buttons.findIndex((b) => b.getAttribute("aria-label") === "Play preview");
+    return at > 0 ? (buttons[at - 1] as HTMLElement).innerText.split("\n").map((l) => l.trim()).filter((l) => l && l !== "voice_selection")[0] : undefined;
+  });
 }
 
 // Chooses a stock voice in the open character editor. Both the "Select a voice" button and the current voice's button
@@ -1334,14 +1338,14 @@ async function pickVoice(page: Page, voice: string): Promise<void> {
   await dialog.getByRole("button", { name: "Add to character", exact: true }).click();
   await pause(page, 1200);
   const now = await readVoice(page);
-  // The voice button is named "fenrir" at one moment and "Fenrir Male, excitable, younger pitch" at another.
-  if (!now?.toLowerCase().startsWith(voice.toLowerCase())) throw new Error(`Flow did not take the voice: ${name_(now)} instead of "${voice}".`);
+  // readVoice returns the voice name alone (the button label also carries a description).
+  if (now?.toLowerCase() !== voice.toLowerCase()) throw new Error(`Flow did not take the voice: ${name_(now)} instead of "${voice}".`);
 }
 
 // Opens the voice dialog and selects `voice` in it, leaving the dialog open for the caller to confirm or customise.
 async function openVoiceDialog(page: Page, voice: string) {
   const current = await readVoice(page);
-  const opener = current ? page.getByRole("button", { name: current, exact: true }) : page.getByRole("button", { name: "Select a voice" });
+  const opener = current ? page.locator("main button").filter({ hasText: current }).filter({ hasText: "voice_selection" }) : page.getByRole("button", { name: "Select a voice" });
   await opener.first().click();
   const dialog = page.getByRole("dialog").first();
   const list = dialog.getByRole("listbox", { name: "Asset list" });
@@ -1421,6 +1425,9 @@ export async function finishCustomVoice(name: string, keep: boolean): Promise<{ 
       await dialog.getByRole("button", { name: "Close" }).click();
       return { name };
     }
+    // A brand-new custom voice first has to be saved ("Save new voice", the dialog then offers "Add to character").
+    const save = dialog.getByRole("button", { name: "Save new voice" });
+    if (await save.isVisible().catch(() => false)) await save.click();
     await dialog.getByRole("button", { name: "Add to character", exact: true }).click();
     await pause(page, 2500);
     const voice = await readVoice(page);
@@ -1439,7 +1446,7 @@ export async function setCharacterVoice(name: string, voice: string): Promise<{ 
   await openCharacter(page, name);
   const previous = await readVoice(page);
   try {
-    if (!previous?.toLowerCase().startsWith(voice.toLowerCase())) await pickVoice(page, voice);
+    if (previous?.toLowerCase() !== voice.toLowerCase()) await pickVoice(page, voice);
   } finally {
     await leaveCharacterEditor(page);
   }

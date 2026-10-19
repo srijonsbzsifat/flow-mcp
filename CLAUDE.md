@@ -509,3 +509,8 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
   is sometimes "fenrir" and sometimes "Fenrir Male, excitable, younger pitch": compare with startsWith.
 - Not tested: the "add" path of flow_custom_voice (adding a custom voice makes it appear in the list as "<Base> custom" with a
   delete button; Deleting it removes the voice from every character using it).
+- Custom voice saving (mapped live 2026-10-19): after Preview the dialog's button is "Save new voice" (plus "Reset"), NOT "Add to
+  character"; generating shows mat-icon `hourglass_top` for ~15-25 s; after saving, the voice joins the list ("<name>" with a
+  "Delete custom voice" button) and "Add to character" appears. `finishCustomVoice` does both. `readVoice` now returns the voice NAME
+  alone (second text line of the voice button; the aria label carries the description / the whole performance text).
+  Sami = "Fenrir Sami" (custom, Fenrir + youthful-child performance), verified.
