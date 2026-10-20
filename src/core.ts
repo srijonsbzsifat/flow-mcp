@@ -5,7 +5,7 @@ import { z } from "zod";
 import { assemble, localVoices, speakLocally } from "./assemble.js";
 import { GEMINI_VOICES, geminiKey, saveGeminiKey, speakWithGemini } from "./gemini.js";
 import { extractLastFrame } from "./chain.js";
-import { finishCustomVoice, previewCustomVoice, listProjects, openProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, renameAssets, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
+import { finishCustomVoice, previewCustomVoice, listProjects, openProject, createProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, renameAssets, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
 import { JobQueue, type Job } from "./queue.js";
 import { BIN, COMPUTER, IS_MAC, IS_WIN, moveToBin } from "./platform.js";
 import { TECHNIQUES, techniqueById } from "./techniques.js";
@@ -32,7 +32,7 @@ const sceneSchema = z.object({
   last_frame: z.string().optional().describe("Last frame: absolute image path, or 'asset:<title>'."),
   reference_images: z
     .array(z.string())
-    .max(3)
+    .max(20)
     .optional()
     .describe(
       "Reference media: absolute image paths, or 'asset:<title>' for media or characters already in the Flow project. Flow's COMPOSER takes references OR first/last frames on a video scene, never both, so with frames set these are skipped and the job says so. Flow itself can do both via agent mode (save the last frame, Animate it, then add the character).",
@@ -89,10 +89,9 @@ export const shapes = {
     scenes: z.array(z.string().min(1)).min(1).max(50).describe("One image description per scene, in order."),
     characters: z
       .array(z.string().min(1))
-      .max(3)
       .optional()
       .describe(
-        "Characters (or avatars) to attach to Flow's agent, by name as listed by flow_characters, so every image keeps them identical. Verified by the user 2026-10-19: with a character attached, the agent kept it consistent across a 20-image batch. Attach the characters that appear in MOST scenes; describe any other character in the scene text.",
+        "Characters (or avatars) to attach to Flow's agent, by name as listed by flow_characters, so every image keeps them identical. Verified by the user 2026-10-19: with a character attached, the agent kept it consistent across a 20-image batch. No cap: attach every character the batch needs.",
       ),
     references: z
       .array(z.string().min(1))
@@ -115,6 +114,12 @@ export const shapes = {
     user_confirmed: z
       .literal(true)
       .describe("Must be true, and only after the USER has said in chat which project to switch to. Everything afterwards (characters, assets, generations, trash) acts on that project."),
+  },
+  create_project: {
+    title: z.string().min(1).max(80).describe("Name for the new project."),
+    user_confirmed: z
+      .literal(true)
+      .describe("Must be true, and only after the USER has said in chat to create a new project (and what to call it). Everything afterwards acts on the new, empty project."),
   },
   accounts: {},
   use_account: {
@@ -150,7 +155,7 @@ export const shapes = {
     prompt: z.string().min(1).describe("What happens in the new clip, written as one continuous shot with one camera move."),
     attach: z
       .array(z.string().min(1))
-      .max(3)
+      .max(20)
       .optional()
       .describe("Characters or avatars to keep attached, by name, e.g. ['Me'] for your own Flow avatar or ['Pip']. This is the whole point of this tool: the normal composer cannot hold a character and a start frame at the same time."),
     aspect_ratio: z.enum(["16:9", "9:16"]).default("16:9"),
@@ -287,6 +292,7 @@ export interface Core {
   techniques(a: Args<"techniques">): Promise<unknown>;
   projects(): Promise<unknown>;
   open_project(a: Args<"open_project">): Promise<unknown>;
+  create_project(a: Args<"create_project">): Promise<unknown>;
   accounts(): Promise<unknown>;
   use_account(a: Args<"use_account">): Promise<unknown>;
   voices(): Promise<unknown>;
@@ -332,7 +338,7 @@ export class LocalCore implements Core {
     if (reference_from) {
       const still = this.queue.get(reference_from)?.files.find((f) => /\.(jpe?g|png|webp)$/i.test(f));
       if (!still) throw new Error(`reference_previous: the previous scene (${reference_from}) produced no image.`);
-      job.params.reference_images = [still, ...(job.params.reference_images ?? [])].slice(0, 3);
+      job.params.reference_images = [still, ...(job.params.reference_images ?? [])].slice(0, 20);
     }
     if (chain_from) {
       const clip = this.queue.get(chain_from)?.files.find((f) => /\.(mp4|webm|mov)$/i.test(f));
@@ -642,6 +648,11 @@ export class LocalCore implements Core {
   async open_project({ project }: Args<"open_project">) {
     if (this.queue.busy) throw new Error(BUSY);
     return openProject(project);
+  }
+
+  async create_project({ title }: Args<"create_project">) {
+    if (this.queue.busy) throw new Error(BUSY);
+    return createProject(title);
   }
 
   async accounts() {

@@ -572,3 +572,25 @@ The preview tool could not read the project while it lived in ~/Desktop; check t
 ## Clip prompt template that worked (2026-10-20)
 For first+last-frame clips write: SET GEOGRAPHY (fixed props, hinge side, swing direction, which opening the characters use, handles on both faces), POSITION OF EACH CHARACTER SECOND BY SECOND (outside/inside, facing, hands, "walks through the opening, never through the leaf"), the reason for anyone absent in the end frame ("nobody is visible because X is inside behind the closed door"), and a FORBIDDEN line (the exact failure seen before: closing from outside, vanishing, passing through an object, body turning to camera, head turning more than a quick glance). Zombie clip 4: the plain timeline teleported Eli, this structure did not (same frames). Test at 360p (half price, 5 credits per 6 s), final at 720p upscaled.
 - Head/body rule (user, 2026-10-20): "a quick glance toward the street" from a camera outside the door means toward the camera, and the model turned Eli's head fully round with his body facing away (unnatural). Write who the character addresses and make him face them; head and body turn together (pivot the body for anything beyond ~45 degrees); forbid "head turned toward the camera while the body faces away". Check head vs body in every contact sheet before calling a clip good.
+
+## Create project (2026-10-20)
+- `flow_create_project` (createProject in flow.ts; needs `user_confirmed: true` = the user said in chat to create it): home page
+  button `New project` -> /project/<uuid> at once; the title is `input[aria-label="Editable text"]` (default "Oct 20 - 01:56"),
+  fill + Enter. Refuses an existing title. Free. Verified live on the Sifat account ("Seoul Coffee CEO", duplicate refused).
+  A claude session keeps the OLD code until Claude is restarted; the new tool appears after that.
+  Mapping runs create real projects: the throwaway "Oct 20 - 01:56" project on `main` is an empty leftover (user may delete it).
+- NO 3-CHARACTER CAP (2026-10-20, user's call): flow_agent_images `characters` is uncapped, flow_generate `reference_images` and
+  flow_continue `attach` allow 20, internal slices raised 3 -> 20. Flow itself may refuse past its own limit; if so the picker
+  error surfaces, do not re-add a cap in the schema. Needs a Claude restart to load.
+- AGENT SETTINGS SAVE BLOCKED (2026-10-20): after pickAgentImageModel the model menu's `settings-menu-backdrop` covered the `Save`
+  button ("intercepts pointer events"), the whole agent batch failed and every image was made one by one - and the one-by-one
+  route ignores the plates' composition much more than the agent does (counter and people geometry came out wrong). setAgentSettings
+  now clears backdrops before Save and forces the click as a fallback. If a batch note says "agent mode failed", the frames are
+  worse: audit them, and re-run through the agent rather than accepting them.
+- POLICY FILTER + HUNG JOB (2026-10-20, Seoul Coffee CEO): a video tile can fail with "This generation might violate our policies. Please try a
+  different prompt... You will be refunded" (the failed tile's text; refunded, verified: credits 971 -> 921 after exactly the successful clips).
+  With `retries: 0` the job did not notice (it hung 720 s and blocked the whole queue, twice); with the default retries it reported "failed 2 times"
+  in ~3 min. Reword plainer (dropped "glaring/slams/trembling/tears" and it passed) and when one prompt holds two emotionally loaded lines, split
+  them into two clips (second chained from the first's last frame, `chain_previous: true`). Not fixed in code: waitForNewMedia only counts an error
+  tile when no top-8 tile shows "NN%"; if that is the cause, count error tiles above the first known tile regardless.
+- "NO x1 OPTION" ON IMAGE JOBS (2026-10-20, repeatedly in Seoul Coffee CEO runs): a long run of image jobs started failing with `Flow has no "x1" option for the current mode/model` (the composer had slipped into video settings). Reloading the project (`flow_open_project`) cleared it. pickRadio now waits up to 5 s for the radio before throwing; if it still happens, reopen the project and run ONE image job per call.

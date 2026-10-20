@@ -334,6 +334,9 @@ async function openSettings(page: Page): Promise<void> {
 
 async function pickRadio(page: Page, name: string | RegExp): Promise<void> {
   const radio = page.getByRole("radio", { name, exact: typeof name === "string" }).first();
+  // The popover options can appear a moment after the popover itself (a long run of image jobs failed with "no x1 option"
+  // on 2026-10-20 until the page was reloaded), so give the radio a few seconds before declaring it missing.
+  if (!(await radio.isVisible().catch(() => false))) await radio.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
   if (!(await radio.isVisible().catch(() => false))) {
     throw new Error(`Flow has no "${name}" option for the current mode/model.`);
   }
@@ -1347,6 +1350,29 @@ export async function openProject(target: string): Promise<{ name: string; url: 
   return { name: chosen.name, url: chosen.url };
 }
 
+// Creates a new, empty project from the home page's "New project" button (mapped 2026-10-20): it opens
+// /project/<uuid> at once, and the title is the `input[aria-label="Editable text"]` in the top bar, holding a date stamp
+// until filled. Refuses a title already in use (duplicates break title matching). Callers need the user's OK first.
+export async function createProject(title: string): Promise<{ name: string; url: string }> {
+  const page = await getFlowPage();
+  const name = title.trim();
+  const { projects } = await listProjects();
+  if (projects.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new Error(`A project called "${name}" already exists. Use flow_open_project, or pick another title.`);
+  await page.goto(inEnglish("https://flow.google.com/"), { waitUntil: "domcontentloaded" });
+  const button = page.getByRole("button", { name: "New project" });
+  await button.waitFor({ state: "visible", timeout: 30_000 });
+  await button.click();
+  await page.waitForURL(/\/project\/[0-9a-f-]{36}/, { timeout: 30_000 });
+  const field = page.locator('input[aria-label="Editable text"]').first();
+  await field.waitFor({ state: "visible", timeout: 30_000 });
+  await field.fill(name);
+  await field.press("Enter");
+  await pause(page, 1500);
+  await page.getByRole("button", { name: "Add media menu" }).waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+  await showAllMedia(page, true).catch(() => {});
+  return { name, url: page.url() };
+}
+
 // A scene's tile menu downloads a ZIP of its loose clips, which is not what anyone wants. The whole scene comes out as
 // ONE stitched file from inside the scene view: open the scene, press "Download scene", and Flow shows "Exporting your
 // scene..." before the file arrives (a 29 s scene took a few seconds). The user showed this route; verified 2026-10-01.
@@ -1631,6 +1657,12 @@ export async function createCharacter(c: CharacterParams, job?: Job): Promise<{ 
   // With no characters yet Flow jumps straight to the creation page.
   const create = page.getByRole("button", { name: "New character" });
   if (await create.isVisible().catch(() => false)) await create.click();
+  else if (!/\/character$/.test(page.url())) {
+    // Once a project has characters the Characters view has no "New character" tile (seen 2026-10-20); the same action
+    // lives in the composer's `Add media menu` as "Create character".
+    await page.getByRole("button", { name: "Add media menu" }).click();
+    await page.getByRole("menuitem", { name: /Create character/ }).click();
+  }
   await page.waitForURL(/\/character$/, { timeout: 15_000 });
 
   if (image.startsWith(ASSET_PREFIX)) {
@@ -1812,7 +1844,11 @@ async function setAgentSettings(page: Page, confirm: "Always" | "Never", imageAs
       await pickAgentImageModel(page);
     }
     await pause(page, 300);
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    // The image-model menu can stay open after its pick and its `settings-menu-backdrop` then covers Save (3 images
+    // fell back to one-by-one on 2026-10-20 over exactly this): click the backdrop away first, force the click as a last resort.
+    await clearBackdrops(page);
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await save.click({ timeout: 8000 }).catch(() => save.click({ force: true }));
     await pause(page, 1200);
   } finally {
     // Saved or not, never leave the panel covering the composer: the next step needs the Agent button.
@@ -2224,7 +2260,7 @@ export async function runAgentBatch(job: Job): Promise<string[]> {
         prompt: scenes[i],
         type: "image",
         max_credits: 0,
-        reference_images: [...(s.attach ?? []), ...(s.agent_refs ?? [])].map((n) => `asset:${n}`).slice(0, 3),
+        reference_images: [...(s.attach ?? []), ...(s.agent_refs ?? [])].map((n) => `asset:${n}`).slice(0, 20),
         aspect_ratio: s.aspect_ratio,
         download_quality: s.download_quality,
         output_dir: s.output_dir,

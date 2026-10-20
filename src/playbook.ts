@@ -26,6 +26,6 @@ export const PLAYBOOK = {
   continuity: [
     "chain_previous: true starts a scene on the last frame of the scene before it, giving one continuous take across clips.",
     "first_frame + last_frame makes Flow animate between two stills; generate both stills as free images first for controlled transitions.",
-    "reference_images (max 3) keep a product or person consistent without fixing the first frame.",
+    "reference_images (up to 20) keep a product or person consistent without fixing the first frame.",
   ],
 };

@@ -170,7 +170,7 @@ server.registerTool(
   {
     title: "Fast image batch via Flow's agent",
     description:
-      "Hand up to 50 image scenes to Flow's own Agent mode, which renders them all in parallel (about a minute for a whole batch) and enriches each prompt itself. Images only, 0 credits. Pass `characters` (up to 3, by name from flow_characters) to attach them to the agent so they stay identical across the whole batch (verified by the user on a 20-image run), `references` (reference images in the open project: location plates, start-frame stills; each scene's text must say 'location: <title>' or 'start frame: <title>'), and `style` for a global directive. Less exact than flow_generate: the agent picks the wording, no other reference images/techniques, and file order is best-effort. Use flow_generate when every scene needs exact settings or reference plates. Returns a job id; use flow_wait.",
+      "Hand up to 50 image scenes to Flow's own Agent mode, which renders them all in parallel (about a minute for a whole batch) and enriches each prompt itself. Images only, 0 credits. Pass `characters` (any number, by name from flow_characters) to attach them to the agent so they stay identical across the whole batch (verified by the user on a 20-image run), `references` (reference images in the open project: location plates, start-frame stills; each scene's text must say 'location: <title>' or 'start frame: <title>'), and `style` for a global directive. Less exact than flow_generate: the agent picks the wording, no other reference images/techniques, and file order is best-effort. Use flow_generate when every scene needs exact settings or reference plates. Returns a job id; use flow_wait.",
     inputSchema: shapes.agent,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -295,6 +295,18 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   (args) => reply(patient("flow_open_project", core.open_project(args))),
+);
+
+server.registerTool(
+  "flow_create_project",
+  {
+    title: "Create a new Flow project",
+    description:
+      "Create a new, empty Flow project with the given title in the active account and open it. ONLY after the user has said in chat to create it (set user_confirmed: true). Free. Refuses a title that already exists. Characters, assets and generations then act on the new project.",
+    inputSchema: shapes.create_project,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_create_project", core.create_project(args))),
 );
 
 server.registerTool(
