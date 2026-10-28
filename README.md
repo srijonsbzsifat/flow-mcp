@@ -17,11 +17,36 @@ New here? [GETTING-STARTED.md](GETTING-STARTED.md) takes you from nothing to you
 
 ---
 
+## Install or update with Claude (the easy way)
+
+You do not need to type commands: paste one of these into **Claude Code** (or the **Code** tab of the Claude app) and say yes when it asks.
+
+**New here: install**
+
+> Set up Flow MCP from https://github.com/srijonsbzsifat/flow-mcp for me. First check what I already have (git, Node.js 22 or newer, Google Chrome, FFmpeg) and install only what is missing, asking me before each install. Clone it into my home folder (not Desktop, Documents or Downloads, and not a OneDrive-synced folder), run `npm install` and `npm run build`, add it to Claude for every folder with `claude mcp add --scope user flow -- node <full path>/dist/index.js`, then run `npm run login` and tell me exactly what to do in the Chrome window. At the end tell me to restart Claude and then run "check my Flow session". Never ask me to paste a password or an API key into this chat.
+
+**Already using it: update**
+
+> Update Flow MCP in my flow-mcp folder. First show me `git status` and the last 3 commits; if I have local changes, stop and ask me. Then run `git pull`, `npm install` and `npm run build`. Tell me what is new (read "What's new" in README.md) and which one-time steps I need to do, and remind me to fully quit and reopen Claude. After I restart, run `flow_status` and `flow_voices` to confirm it works and that my saved keys and narrations are still there.
+
+**What only you do (Claude cannot and should not):** type your computer password if an install asks for it, sign in to Google in the Chrome window it opens, sign in to Flow Music once (see below), and paste Google AI Studio keys into **Flow Studio**, never into a chat.
+
+**What an update never touches:** your Chrome sign-in (`~/.flow-mcp/chrome-profile`), your saved Gemini keys (`~/.flow-mcp/gemini-keys`), your output folder and saved narrations. They live outside this folder. The compiled program (`dist/`) is not in git, so **`npm run build` is part of every update**: if new tools are missing afterwards, you skipped the build or did not fully quit and reopen Claude.
+
+### What's new (2026-10-28)
+
+- **Flow Music** (flowmusic.app, Lyria): `flow_music_create`, `flow_music_edit`, `flow_music_download`, and `flow_music_bed` (one soft bed of an exact length, hands-off). One-time: in the Flow Chrome window (the one `npm run login` opens), open a new tab, go to **flowmusic.app** and sign in by hand; the session is kept. Downloads land in your output folder under the song title.
+- **Several Gemini keys** in Flow Studio (**Voice** tab, "Add key"; one per Google account). When one is rate limited or used up the next is used automatically, then the next voice model (`gemini-3.8-flash-tts` is the default). Existing single keys keep working.
+- **Long narration, hands-off**: `flow_narrate` takes up to 12,000 characters; `flow_narrate_script` narrates a whole script (one scene per paragraph) in the same voice, keeps each take, evens out pace and writes `takes.json`; `flow_narrate_redo` re-records just one take (slower, or new wording).
+- Windows 11 has now been run end to end.
+
+---
+
 ## What you need
 
 | | |
 |---|---|
-| **macOS or Windows 10/11** | Developed and tested on macOS. Windows is supported (Chrome, the computer's own voices, the Recycle Bin and the panel launcher all have Windows versions), but it hasn't been run on a real PC yet, so please report anything that breaks |
+| **macOS or Windows 10/11** | Developed on macOS; also run end to end on Windows 11 (Flow, Flow Music, narration, downloads). Please report anything that breaks |
 | **Node.js 22 or newer** | `node --version` |
 | **Google Chrome** | Any recent version |
 | **A Google account** | Free. Flow gives every account 50 credits a day; a paid Google AI plan adds more and unlocks 1080p downloads. Developed on a Pro plan |
@@ -170,8 +195,8 @@ Seven tabs, in the order you would use them:
 - **Shots**: paid clips, with first/last frames, chaining, a live credit estimate, and a card that
   continues a finished clip from its own last frame.
 - **Voice**: free narration in Google's voices or your computer's own. Your saved narrations are listed
-  here to play or delete, and there's a field for your Google AI Studio key (checked with Google, stored
-  only on your computer; never paste it into a chat).
+  here to play or delete, and a list of your Google AI Studio keys (add one per Google account; the next is used automatically when one is limited; each is checked with Google and stored
+  only on your computer; never paste a key into a chat).
 - **Restyle**: change a clip you already have.
 - **Cut**: join any videos into one film, in the order you pick. Upload one, or choose from films you've
   already made. Add a narration (from your saved ones or an upload) and music, and turn the clips' own
@@ -220,9 +245,15 @@ agree on what is running. That API listens on 127.0.0.1 only and needs a per-run
 | `flow_character_edit` | Restyle an existing character in place (free) and save the new portrait; name, personality and voice are kept, so every scene referencing it updates. Pass `look` with the updated description; with only a name it re-saves the current portrait. Also changes the **voice** (`voice`, or `voice_from` another character; a voice-only call skips the redraw) |
 | `flow_characters` | List the project's characters, each with the voice it has (read live from Flow; `with_voices: false` for a quick list) |
 | `flow_techniques` | 39 film-technique prompt presets (camera moves, product shots, transitions, image commands); pass an id as a scene's `technique` |
-| `flow_narrate` | Free narration audio, any length: `gemini` (Google AI Studio text-to-speech, with the same voices Flow has, plus a `style` note) or `mac` (a voice installed on this computer, no key needed) |
+| `flow_narrate` | Free narration audio: `gemini` (Google AI Studio text-to-speech, the same voices Flow has, plus a `style` note; up to 12,000 characters, split into takes and joined) or `mac` (a voice installed on this computer, no key needed) |
+| `flow_narrate_script` | Narrate a whole script hands-off: one scene per paragraph, scenes grouped into ~1,800-character takes in the SAME voice and delivery, keys and voice models rotated on rate limits, each take loudness-matched, a take read much faster or slower than the rest re-recorded once; writes `narration.m4a` and `takes.json` |
+| `flow_narrate_redo` | Re-record ONE take of that narration (slower, calmer, new wording), keep the rest, rejoin |
 | `flow_voices` | Narrator voices available, and whether a Google key is set up |
 | `flow_assemble` | Join clips into one MP4 (a project's clips, or any you list, in order) with optional music and voiceover, and separate volume for the clips' own sound (local FFmpeg, no credits) |
+| `flow_music_create` | Flow Music (flowmusic.app, Lyria): start a Producer session, ask for a track in plain words, wait, download it (mp3, m4a or wav) into the output folder under the song title |
+| `flow_music_edit` | Send a follow-up to the Producer in the same session (softer, shorter, remove an element); downloads the new version |
+| `flow_music_bed` | One bed of an exact length, hands-off: several versions of the same piece from one session, loudness-matched, crossfaded, faded |
+| `flow_music_download` | Download any song by id or link as mp3, m4a or wav |
 
 **Continuity between shots:** `chain_previous` (this clip starts on the last frame of the previous
 one), `first_frame` + `last_frame` (animate between two stills you chose), `reference_images` (keep a
@@ -237,8 +268,22 @@ Output lands in `~/flow-mcp-out/<project>/` (change it with `FLOW_MCP_OUTPUT`). 
 `flow_narrate` with `engine: "mac"` uses your computer's own voices and works out of the box: macOS voices on a
 Mac, the built-in speech voices on Windows. For Google's voices (the same ones Flow offers), get a free key from
 [Google AI Studio](https://aistudio.google.com/apikey) and paste it into **Flow Studio → Voice → Google AI Studio
-key → Save key**. It's checked with Google before it's saved, and stored only on your computer. Or set
-`GEMINI_API_KEY`. Either way, never paste the key into a chat; it would end up in the conversation history.
+keys → Add key**. It is checked with Google before it is saved and stored only on your computer. Or set
+`GEMINI_API_KEY`. Either way, never paste a key into a chat; it would end up in the conversation history.
+
+**Free keys are rate limited, so add one key per Google account you have.** Studio shows each key by its last 4
+characters with "ready" or "limited, back in 9h55m". When Google refuses one (rate or daily limit) that key is set aside
+for as long as Google says and the next one is used; when every key is used up on one voice model, the next model is
+tried (`gemini-3.8-flash-tts`, `3.8-flash-lite`, `3.1-flash`, `2.5-flash`). All models take 8,192 input tokens and
+return up to 16,384 output tokens per request (about 8-10 minutes of speech); the tools use takes of about 1,800
+characters (about 100 s) for steady quality, so a 6-minute script is 3-4 requests.
+
+### Music with Flow Music (optional)
+
+Sign in to **flowmusic.app** once, by hand, in the same Chrome window Flow uses (it keeps the session). Then ask for
+music in plain words: *"Make a calm piano bed for a 6-minute video."* Flow Music tracks come out 2-5 minutes whatever
+length you ask for, which is why `flow_music_bed` makes several in one session and joins them. The number beside the
+diamond in Flow Music is progress points, not credits; no generation limit has been found.
 
 ---
 
@@ -252,7 +297,7 @@ key → Save key**. It's checked with Google before it's saved, and stored only 
   Chrome window always shows Flow in English (it adds `?hl=en` to the address). Your account's own
   language setting is never changed, and prompts can be written in any language.
 - Environment variables: `GEMINI_API_KEY`, `FLOW_MCP_PORT` (8787), `FLOW_MCP_OUTPUT`,
-  `FLOW_MCP_HOME`, `FLOW_MCP_USER_DOWNLOADS` (where downloads you make by hand in that Chrome land; default `~/Downloads`), `FLOW_MCP_CDP_PORT` (9333), `FLOW_MCP_CHROME`, `FLOW_MCP_PAUSE_MIN_S`,
+  `FLOW_MCP_HOME`, `FLOW_MCP_USER_DOWNLOADS` (where downloads you make by hand in that Chrome land; default `~/Downloads`), `FLOW_MCP_CDP_PORT` (9333), `FLOW_MCP_CHROME`, `FLOW_MCP_GEMINI_TTS` (pin one voice model), `FLOW_MCP_TTS_CHUNK` (characters per narration take, default 1800), `FLOW_MCP_PAUSE_MIN_S`,
   `FLOW_MCP_PAUSE_MAX_S`.
 
 ## If something goes wrong
@@ -268,8 +313,19 @@ key → Save key**. It's checked with Google before it's saved, and stored only 
 
 ## Updating
 
-Tell your assistant: *"Update Flow MCP: in my flow-mcp folder, run git pull, then npm install, then npm run
-build."* Then fully quit and reopen your assistant app so it loads the new version.
+Use the **update prompt** at the top of this page. By hand, in your flow-mcp folder:
+
+```bash
+git status            # stop here if you have local changes
+git pull
+npm install
+npm run build         # required: the compiled program (dist/) is not stored in git
+```
+
+Then **fully quit and reopen** Claude (or your assistant), and ask *"check my Flow session"* and *"which narrator voices
+do I have?"*. If a new tool is missing, the build or the restart was skipped. Your sign-in, keys and saved work are kept
+(they live in `~/.flow-mcp` and your output folder, outside this folder). If Flow Studio is open, close it and reopen it
+(`npm run studio`) to see new panels.
 
 ---
 
