@@ -617,3 +617,7 @@ For first+last-frame clips write: SET GEOGRAPHY (fixed props, hinge side, swing 
 - Song page "..." = the unnamed button 60 px right of Share in <main>. The bottom player bar's "More options" menu acts on the track that is PLAYING, so it once downloaded the wrong song: never use it. The Download submenu opens on hover and closes if the pointer cuts diagonally across the menu: move sideways into it, then down (done in fetchSong).
 - A menu left open on a song page hides its buttons: fetchSong always reloads the song page first.
 - Tested end to end: create (new session) -> download mp3; edit in the same session (follow-up prompt) -> download; download m4a/wav by id.
+
+## Long narration (2026-10-28)
+`flow_narrate` (gemini) now accepts up to 12,000 characters: `speakLongWithGemini` splits at sentence ends into takes of ~1,800 characters (env FLOW_MCP_TTS_CHUNK), speaks them in order with the same voice/style, retries a 429 that asks for <= 70 s, joins with a 0.25 s pad. Tested: 1,608 chars in one take = 100.3 s in 42 s, 97% word match by local whisper; 786 chars as 2 takes = 56.4 s, 155 words, no cut. The old 400-character limit was only in the tool schema, not in Gemini. Free tier is still ~10 requests/day and 3/min (a 6-minute script = 3-4 requests). The running MCP needs a Claude restart to pick up the new limit.
+Flow Music tracks are 2-3.5 min whatever length is asked (asked 6 min -> 2:57): join several with script-to-video/tools/join_music.py.

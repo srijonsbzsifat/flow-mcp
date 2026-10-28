@@ -103,3 +103,56 @@ export async function speakWithGemini(text: string, voice: string, target: strin
   await run("rm", ["-f", raw]).catch(() => {});
   return { output: target, duration };
 }
+
+// Splits at sentence ends into takes of at most `max` characters (a single longer sentence is cut at a comma or space).
+export function chunkText(text: string, max: number): string[] {
+  const sentences = text.replace(/\s+/g, " ").trim().match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [text];
+  const out: string[] = [];
+  let cur = "";
+  const push = (piece: string) => {
+    if ((cur + " " + piece).trim().length <= max) cur = (cur + " " + piece).trim();
+    else { if (cur) out.push(cur); cur = piece.trim(); }
+  };
+  for (const sentence of sentences) {
+    let rest = sentence.trim();
+    while (rest.length > max) {
+      const cut = Math.max(rest.lastIndexOf(", ", max), rest.lastIndexOf(" ", max));
+      push(rest.slice(0, cut > 0 ? cut + 1 : max));
+      rest = rest.slice(cut > 0 ? cut + 1 : max).trim();
+    }
+    push(rest);
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// A long script in one call: takes of ~1,800 characters (about 1.5-2 minutes of speech each, tested 1,608 characters = 100 s,
+// 97% word match), spoken one after another in the same voice and style, then joined with a 0.25 s pause. The free tier
+// allows 3 requests a minute and about 10 a day, so a 6-minute script needs 3-4 requests; a 429 that asks for a short wait
+// is retried, a longer one (the daily quota) is reported as it is.
+export async function speakLongWithGemini(text: string, voice: string, target: string, style?: string): Promise<{ output: string; duration: number; takes: number }> {
+  const max = Number(process.env.FLOW_MCP_TTS_CHUNK ?? 1800);
+  const pieces = chunkText(text, max);
+  if (pieces.length === 1) return { ...(await speakWithGemini(pieces[0]!, voice, target, style)), takes: 1 };
+  const stem = target.replace(/\.\w+$/, "");
+  const parts: string[] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    const part = `${stem}.take${String(i + 1).padStart(2, "0")}.m4a`;
+    for (let attempt = 0; ; attempt++) {
+      try { await speakWithGemini(pieces[i]!, voice, part, style); break; }
+      catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const wait = /\(429\)/.test(msg) ? Number(msg.match(/retry in ([\d.]+)s/i)?.[1] ?? NaN) : NaN;
+        if (!(wait <= 70) || attempt >= 3) throw new Error(`Take ${i + 1} of ${pieces.length} failed: ${msg}${i ? ` (takes 1-${i} are saved as ${stem}.take01.m4a ...)` : ""}`);
+        await new Promise((r) => setTimeout(r, (wait + 2) * 1000));
+      }
+    }
+    parts.push(part);
+  }
+  const inputs = parts.flatMap((p) => ["-i", p]);
+  const pads = parts.map((_, i) => `[${i}]apad=pad_dur=0.25[p${i}]`).join(";");
+  await run(FFMPEG, ["-y", ...inputs, "-filter_complex", `${pads};${parts.map((_, i) => `[p${i}]`).join("")}concat=n=${parts.length}:v=0:a=1[o]`, "-map", "[o]", "-ar", "48000", "-ac", "2", target]);
+  const { stdout } = await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", target]);
+  for (const p of parts) await run("rm", ["-f", p]).catch(() => {});
+  return { output: target, duration: Number(stdout.trim()), takes: parts.length };
+}

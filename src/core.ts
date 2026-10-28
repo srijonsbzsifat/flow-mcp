@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { assemble, localVoices, speakLocally } from "./assemble.js";
-import { GEMINI_VOICES, geminiKey, saveGeminiKey, speakWithGemini } from "./gemini.js";
+import { GEMINI_VOICES, geminiKey, saveGeminiKey, speakLongWithGemini } from "./gemini.js";
 import { extractLastFrame } from "./chain.js";
 import { finishCustomVoice, previewCustomVoice, listProjects, openProject, createProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, renameAssets, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
 import { JobQueue, type Job } from "./queue.js";
@@ -136,7 +136,7 @@ export const shapes = {
       .describe(
         "'gemini' uses Google AI Studio's text-to-speech - the same voices Flow has, free on the AI Studio tier, no length limit, needs a key in ~/.flow-mcp/gemini-key. 'mac' uses a voice installed on this computer (macOS voices on a Mac, the built-in speech voices on Windows): free, instant, no key.",
       ),
-    text: z.string().min(1).max(400).describe("The line to speak. About 20 words fits 8 s, 30 words fits 12 s; anything longer needs a longer take."),
+    text: z.string().min(1).max(12000).describe("The text to speak, any length up to about 12,000 characters (a 10-minute script). With engine gemini it is split at sentence ends into takes of about 1,800 characters (1.5-2 min each) and joined; 3-4 requests per 6-minute script against the free tier's ~10 a day. About 150 words = 1 minute."),
     voice: z.string().min(1).default("Charon").describe("Voice name from flow_voices, e.g. Charon (informative), Aoede (breezy), Gacrux (mature) for Google; Zoe or Samantha for macOS."),
     style: z.string().max(200).optional().describe("Delivery note for the 'gemini' engine, e.g. 'slowly and warmly, like a documentary narrator'."),
   },
@@ -683,7 +683,7 @@ export class LocalCore implements Core {
     const output_dir = projectDir(project);
     mkdirSync(output_dir, { recursive: true });
     const target = join(output_dir, `${this.nextStem(output_dir, "narration")}.m4a`);
-    const spoken = engine === "mac" ? await speakLocally(text.trim(), voice, target) : await speakWithGemini(text.trim(), voice, target, style);
+    const spoken = engine === "mac" ? await speakLocally(text.trim(), voice, target) : await speakLongWithGemini(text.trim(), voice, target, style);
     return { output_dir, credits: 0, engine, voice, ...spoken };
   }
 
