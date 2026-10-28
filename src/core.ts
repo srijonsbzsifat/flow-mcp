@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { assemble, localVoices, speakLocally } from "./assemble.js";
-import { GEMINI_VOICES, geminiKey, saveGeminiKey, speakLongWithGemini } from "./gemini.js";
+import { GEMINI_VOICES, geminiKeys, keyStatus, removeGeminiKey, saveGeminiKey, speakLongWithGemini } from "./gemini.js";
 import { extractLastFrame } from "./chain.js";
 import { finishCustomVoice, previewCustomVoice, listProjects, openProject, createProject, characterLook, characterVoice, characterVoices, createCharacter, setCharacterVoice, downloadAsset, renameAssets, trashAsset, editCharacter, getFlowState, listAssets, listCharacters, rememberCharacter, runAgentBatch, runContinue, runEdit, runGeneration } from "./flow.js";
 import { JobQueue, type Job } from "./queue.js";
@@ -188,6 +188,7 @@ export const shapes = {
   },
   trash: { name: z.string().min(1).describe("Exact title of the item to move to Flow's Trash, as listed by flow_assets.") },
   set_key: { key: z.string().min(1).max(200) },
+  remove_key: { ending: z.string().length(4) },
   discard: { path: z.string().min(1).describe("A saved film, still, narration or whole project folder inside the films folder, to move to this computer's bin (Mac Trash, Windows Recycle Bin).") },
   outputs: {},
   characters: {
@@ -306,6 +307,7 @@ export interface Core {
   trash(a: Args<"trash">): Promise<unknown>;
   discard(a: Args<"discard">): Promise<unknown>;
   set_key(a: Args<"set_key">): Promise<unknown>;
+  remove_key(a: Args<"remove_key">): Promise<unknown>;
   continue_shot(a: Args<"continue_shot">): Promise<unknown>;
   agent(a: Args<"agent">): Promise<unknown>;
   outputs(): Promise<unknown>;
@@ -639,6 +641,9 @@ export class LocalCore implements Core {
   async set_key({ key }: Args<"set_key">) {
     return saveGeminiKey(key);
   }
+  async remove_key({ ending }: Args<"remove_key">) {
+    return removeGeminiKey(ending);
+  }
 
   async projects() {
     if (this.queue.busy) throw new Error(BUSY);
@@ -676,7 +681,7 @@ export class LocalCore implements Core {
   async voices() {
     // The panel words itself from these, so a PC never reads "this Mac".
     const place = { computer: COMPUTER, bin: BIN, local_engine: IS_MAC ? "macOS voice" : IS_WIN ? "Windows voice" : "System voice", platform: process.platform };
-    return { gemini: GEMINI_VOICES, gemini_ready: Boolean(geminiKey()), mac: await localVoices(), place };
+    return { gemini: GEMINI_VOICES, gemini_ready: geminiKeys().length > 0, gemini_keys: keyStatus(), mac: await localVoices(), place };
   }
 
   async narrate({ project, text, voice, engine, style }: Args<"narrate">) {

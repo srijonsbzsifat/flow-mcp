@@ -272,8 +272,9 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
           <label class="f">Voice engine</label><div class="seg" data-seg="n_engine"></div>
           <div class="phrase" id="n_engineNote"></div>
           <div id="n_keyWrap">
-            <label class="f" for="n_key">Google AI Studio key</label>
-            <div class="rowbtns" style="margin-top:0;flex-wrap:nowrap"><input type="password" id="n_key" autocomplete="off" spellcheck="false" placeholder="Paste your key" style="flex:1;min-width:0"><button type="button" class="btn small" id="n_keysave">Save key</button></div>
+            <label class="f" for="n_key">Google AI Studio keys</label>
+            <div id="n_keyList" style="margin:0 0 8px"></div>
+            <div class="rowbtns" style="margin-top:0;flex-wrap:nowrap"><input type="password" id="n_key" autocomplete="off" spellcheck="false" placeholder="Paste a key (add one per Google account)" style="flex:1;min-width:0"><button type="button" class="btn small" id="n_keysave">Add key</button></div>
             <p class="empty" id="n_keyStatus" style="margin-top:6px"></p>
           </div>
           <div class="grid2">
@@ -628,8 +629,10 @@ function renderNarrate() {
         : `<b>Needs a free key.</b> Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and paste it below. Same voices as Flow, free, no length limit.`)
     : `Spoken on ${PLACE.computer} — free, instant, any length. Quality depends on the installed voice: ${PLACE.platform === "win32" ? "add more English voices in <b>Settings → Time &amp; language → Speech</b> and they appear here" : "download a <b>Premium</b> English voice in System Settings → Accessibility → Spoken Content → System Voice → Manage Voices and it appears here automatically"}. ${(VOICES.mac ?? []).length} voice(s) available.`;
   $("#n_keyWrap").hidden = mac;
-  $("#n_keyStatus").innerHTML = VOICES.gemini_ready
-    ? `A key is saved on ${PLACE.computer}. Paste a new one only to replace it.`
+  const KEYS = VOICES.gemini_keys || [];
+  $("#n_keyList").innerHTML = KEYS.map((k) => `<div style="display:flex;align-items:center;gap:10px;margin:3px 0"><code>…${esc(k.ending)}</code><span>${k.state === "ready" ? "ready" : `<span style="color:var(--bad)">limited, back in ${esc(k.resets_in)}</span>`}</span><button type="button" class="btn small" data-rmkey="${esc(k.ending)}">Remove</button></div>`).join("");
+  $("#n_keyStatus").innerHTML = KEYS.length
+    ? `${KEYS.length} key${KEYS.length === 1 ? "" : "s"} saved on ${PLACE.computer}. When one is rate limited or used up, the next one is used automatically — add a key from each Google account you have. Paste keys here, never into a chat.`
     : `Paste it here, not into a chat — it's saved only on ${PLACE.computer} and checked with Google first.`;
   const words = $("#n_text").value.trim().split(/\s+/).filter(Boolean).length;
   const secs = Math.ceil(words / 2.5);
@@ -718,11 +721,17 @@ $("#n_keysave").onclick = async () => {
     $("#n_key").value = "";
     VOICES = await api("voices");
     renderNarrate();
-    $("#n_keyStatus").textContent = `Saved — Google accepted it (ends in …${out.ending}). Google voices are ready.`;
-    toast("Key saved");
+    toast(`Key …${out.ending} added (${out.total} saved)`);
   } catch (err) { $("#n_keyStatus").innerHTML = `<span style="color:var(--bad)">${esc(err.message)}</span>`; }
-  b.disabled = false; b.textContent = "Save key";
+  b.disabled = false; b.textContent = "Add key";
 };
+
+$("#n_keyList").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-rmkey]"); if (!b) return;
+  if (!confirm(`Remove the key ending …${b.dataset.rmkey}? It is only deleted from this computer.`)) return;
+  try { await api("remove_key", { ending: b.dataset.rmkey }); VOICES = await api("voices"); renderNarrate(); toast("Key removed"); }
+  catch (err) { toast(err.message, true); }
+});
 
 /* ---------- cut ---------- */
 function renderClips() {

@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { LocalCore, shapes, type Core } from "./core.js";
-import { musicCreate, musicDownload, musicEdit, musicShapes } from "./music.js";
+import { narrateRedo, narrateScript, narrationShapes } from "./narration.js";
+import { musicBed, musicCreate, musicDownload, musicEdit, musicShapes } from "./music.js";
 import { PLAYBOOK } from "./playbook.js";
 import { RemoteCore } from "./remote.js";
 import { PORT, startServer } from "./server.js";
@@ -386,7 +387,7 @@ server.registerTool(
   {
     title: "Make music in Google Flow Music",
     description:
-      "Start a Producer session on flowmusic.app (Lyria) in the Flow Chrome, ask for a track in plain words, wait for it and download it (mp3/m4a/wav). Free to download; generating may use Flow Music credits. The user signs in to Flow Music once, by hand, on the flowmusic.app tab. For a bed under narration ask for instrumental, no vocals, no drums, low dynamics; tracks often come out 2-3 minutes long, so trim to the video with ffmpeg. Slow: collect the result with flow_wait if it answers still_working.",
+      "Start a Producer session on flowmusic.app (Lyria) in the Flow Chrome, ask for a track in plain words, wait for it and download it (mp3/m4a/wav). Free to download; no generation limit found (the number shown in Flow Music is progress points, not credits). The user signs in to Flow Music once, by hand, on the flowmusic.app tab. For a bed under narration ask for instrumental, no vocals, no drums, low dynamics; tracks often come out 2-3 minutes long, so trim to the video with ffmpeg. Slow: collect the result with flow_wait if it answers still_working.",
     inputSchema: musicShapes.create,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -403,6 +404,42 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   (args) => reply(patient("flow_music_edit", musicEdit(args))),
+);
+
+server.registerTool(
+  "flow_narrate_script",
+  {
+    title: "Narrate a whole script, hands-off",
+    description:
+      "Speaks a full script (one scene per paragraph) with Google's Gemini voices: scenes are grouped into takes of ~1,800 characters (1.5-2 min each, any length overall), every take uses the SAME voice and delivery, rotating through all saved keys and voice models when one is rate limited. Saves each take, joins them into narration.m4a (loudness matched per take), writes takes.json (which scenes are in which take, start times) and warns about a take read much faster/slower than the rest. A 6-minute script is 3-4 requests. Later: flow_narrate_redo re-records one take.",
+    inputSchema: narrationShapes.script,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_narrate_script", narrateScript(args))),
+);
+
+server.registerTool(
+  "flow_narrate_redo",
+  {
+    title: "Re-record one take of a narration",
+    description:
+      "Re-speaks ONE take of a narration made by flow_narrate_script (e.g. 'slower and calmer' for a take, or new text after a scene was edited), keeping the same voice and the other takes, then rejoins narration.m4a and updates takes.json. The video must then be rebuilt to re-time.",
+    inputSchema: narrationShapes.redo,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_narrate_redo", narrateRedo(args))),
+);
+
+server.registerTool(
+  "flow_music_bed",
+  {
+    title: "Make a music bed of an exact length in Flow Music",
+    description:
+      "Hands-off: makes a calm track in a new Flow Music session, asks the Producer in the same session for more versions of the same piece (same instruments, key, tempo, mood) until there is enough, matches their loudness, crossfades them and fades in and out, so you get ONE mp3 of length_seconds (e.g. a 6-minute video). Takes about 1.5 minutes per track (2-4 tracks). Collect the result with flow_wait if it answers still_working. Put the file in the episode as music.mp3.",
+    inputSchema: musicShapes.bed,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_music_bed", musicBed(args))),
 );
 
 server.registerTool(

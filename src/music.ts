@@ -1,13 +1,17 @@
 // Google Flow Music (flowmusic.app, Lyria): a chat with a "Producer". Driven in the same Chrome as Flow (CDP), signed in by
 // the user once on the flowmusic.app tab. Selectors mapped live 2026-10-28: textbox "Chat message", button "Send message",
 // song links /song/<id> inside <main>, song page "..." (More options) -> Download -> M4A | MP3 | WAV (free, unlimited).
+import { execFile } from "node:child_process";
 import { mkdirSync, readdirSync, statSync } from "node:fs";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { z } from "zod";
 import { getBrowser } from "./chrome.js";
 import { projectDir } from "./core.js";
 
+const run = promisify(execFile);
+const FFMPEG = process.env.FLOW_MCP_FFMPEG ?? "ffmpeg";
 const HOME = "https://www.flowmusic.app/";
 const FORMATS = { m4a: "M4A", mp3: "MP3", wav: "WAV" } as const;
 type Fmt = keyof typeof FORMATS;
@@ -35,6 +39,11 @@ export const musicShapes = {
     download: z.boolean().default(true),
     format,
   },
+  bed: {
+    project: z.string().min(1).describe("Folder (under the flow-mcp output root) for the tracks and the finished bed."),
+    prompt: z.string().min(10).max(1500).describe("The music in plain words, as for flow_music_create: mood, instruments, tempo, instrumental, no drums, low dynamics."),
+    length_seconds: z.number().min(20).max(1800).describe("How long the finished bed must be (the video's length in seconds). Flow Music tracks come out 2-3.5 minutes long whatever is asked, so several are made in the SAME session (same instruments and mood) and joined."),
+  },
   download: {
     project: z.string().min(1).describe("Folder for the downloaded track."),
     song: z.string().optional().describe("Song id or flowmusic.app/song/<id> link; default is the newest song in the open session."),
@@ -43,6 +52,7 @@ export const musicShapes = {
 };
 type Create = { project: string; prompt: string; session: "new" | "current"; download: boolean; format: Fmt };
 type Edit = { project: string; message: string; session_url?: string; download: boolean; format: Fmt };
+type Bed = { project: string; prompt: string; length_seconds: number };
 type Download = { project: string; song?: string; format: Fmt };
 
 async function musicPage(): Promise<Page> {
@@ -164,7 +174,7 @@ export async function musicCreate(a: Create) {
   if (!r.created.length) return { created: false, session_url, producer_reply: r.reply, note: "The Producer made no song. Answer it with flow_music_edit." };
   const song = r.created[r.created.length - 1]!;
   const out = a.download ? await fetchSong(p, song.href, a.format, a.project) : { song_url: HOME + song.href.slice(1), title: song.title };
-  return { created: true, session_url, songs: r.created.map((s) => ({ title: s.title, song_url: HOME + s.href.slice(1) })), ...out, credits: "unknown: the Flow Music credit counter is at the bottom left of the page" };
+  return { created: true, session_url, songs: r.created.map((s) => ({ title: s.title, song_url: HOME + s.href.slice(1) })), ...out, credits: "none seen: the number at the bottom left of Flow Music is progress points, not credits; no generation limit found yet" };
 }
 
 export async function musicEdit(a: Edit) {
@@ -190,4 +200,38 @@ export async function musicDownload(a: Download) {
     song = all[all.length - 1]!.href;
   }
   return fetchSong(p, song, a.format, a.project);
+}
+
+const seconds = async (f: string): Promise<number> => Number((await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f])).stdout.trim());
+
+// A bed of exactly the video's length with no user input: make a track, ask the Producer in the same session for more versions
+// of the same piece until there is enough music, then match their loudness, crossfade them and fade in/out.
+export async function musicBed(a: Bed) {
+  const XFADE = 4;
+  const files: string[] = [];
+  let total = 0;
+  let session_url: string | undefined;
+  for (let n = 0; n < 6 && total < a.length_seconds + 1; n++) {
+    const r = (n === 0
+      ? await musicCreate({ project: a.project, prompt: a.prompt, session: "new", download: true, format: "mp3" })
+      : await musicEdit({
+          project: a.project,
+          message: "Make another version of this same piece: the same instruments, key, tempo and mood, calm and steady, no big builds or changes, so it can follow the first one seamlessly.",
+          session_url,
+          download: true,
+          format: "mp3",
+        })) as { created: boolean; file?: string; session_url?: string; producer_reply?: string };
+    if (!r.created || !r.file) throw new Error(`Flow Music made no track on round ${n + 1}: ${r.producer_reply ?? "no reply"}`);
+    session_url = r.session_url;
+    files.push(r.file);
+    total += (await seconds(r.file)) - (n ? XFADE : 0);
+  }
+  if (total < a.length_seconds) throw new Error(`Six tracks only give ${Math.round(total)} s; the video needs ${Math.round(a.length_seconds)} s.`);
+  const out = join(projectDir(a.project), `bed-${Math.round(a.length_seconds)}s.mp3`);
+  const norm = files.map((_, i) => `[${i}]loudnorm=I=-20:TP=-2:LRA=7,aresample=48000[n${i}]`).join(";");
+  let last = "n0";
+  const chain = files.slice(1).map((_, i) => { const x = `x${i + 1}`; const f = `[${last}][n${i + 1}]acrossfade=d=${XFADE}:c1=tri:c2=tri[${x}]`; last = x; return f; });
+  chain.push(`[${last}]atrim=0:${a.length_seconds},afade=t=in:d=1.5,afade=t=out:st=${Math.max(a.length_seconds - 3, 0)}:d=3[o]`);
+  await run(FFMPEG, ["-y", ...files.flatMap((f) => ["-i", f]), "-filter_complex", [norm, ...chain].filter(Boolean).join(";"), "-map", "[o]", "-ar", "48000", "-b:a", "192k", out]);
+  return { file: out, seconds: Math.round(await seconds(out)), tracks: files.length, track_files: files, session_url, note: "Same session, same instruments; loudness matched, crossfaded 4 s, 1.5 s fade in, 3 s fade out." };
 }
