@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { LocalCore, shapes, type Core } from "./core.js";
+import { musicCreate, musicDownload, musicEdit, musicShapes } from "./music.js";
 import { PLAYBOOK } from "./playbook.js";
 import { RemoteCore } from "./remote.js";
 import { PORT, startServer } from "./server.js";
@@ -378,6 +379,41 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   (args) => reply(patient("flow_assemble", core.assemble(args))),
+);
+
+server.registerTool(
+  "flow_music_create",
+  {
+    title: "Make music in Google Flow Music",
+    description:
+      "Start a Producer session on flowmusic.app (Lyria) in the Flow Chrome, ask for a track in plain words, wait for it and download it (mp3/m4a/wav). Free to download; generating may use Flow Music credits. The user signs in to Flow Music once, by hand, on the flowmusic.app tab. For a bed under narration ask for instrumental, no vocals, no drums, low dynamics; tracks often come out 2-3 minutes long, so trim to the video with ffmpeg. Slow: collect the result with flow_wait if it answers still_working.",
+    inputSchema: musicShapes.create,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_music_create", musicCreate(args))),
+);
+
+server.registerTool(
+  "flow_music_edit",
+  {
+    title: "Change a Flow Music track with another prompt",
+    description:
+      "Send a follow-up to the Producer in the open Flow Music session (softer, shorter, different instruments, remove an element...), wait for the new version and download it. Pass session_url from flow_music_create to return to an earlier session. If the Producer only replies in words (a question), the reply text is returned and nothing is made.",
+    inputSchema: musicShapes.edit,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_music_edit", musicEdit(args))),
+);
+
+server.registerTool(
+  "flow_music_download",
+  {
+    title: "Download a Flow Music track",
+    description: "Download a song from flowmusic.app (a song id or link; default the newest in the open session) as mp3, m4a or wav. Free.",
+    inputSchema: musicShapes.download,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  (args) => reply(patient("flow_music_download", musicDownload(args))),
 );
 
 await server.connect(new StdioServerTransport());
